@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X } from 'lucide-react'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 export default function App() {
   const [conversations, setConversations] = useState([])
@@ -12,6 +16,9 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false)
   const [previewImage, setPreviewImage] = useState(null)
+  const [previewFile, setPreviewFile] = useState(null)
+  const [hasMore, setHasMore] = useState(true)
+  const lastMessageIdRef = useRef(null)
   const [profileData, setProfileData] = useState({
     channel_name: '',
     user_name: '',
@@ -34,6 +41,8 @@ export default function App() {
     activeChannelIdRef.current = activeChannelId
     setIsWaiting(false) // 切换对话时重置等待状态
   }, [activeChannelId])
+
+
 
   useEffect(() => {
     isComponentMounted.current = true
@@ -58,11 +67,54 @@ export default function App() {
   }, [activeChannelId, conversations])
 
   useEffect(() => {
-    scrollToBottom()
+    setHasMore(true)
+  }, [activeChannelId])
+
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1]
+    if (lastMsg && lastMsg.id !== lastMessageIdRef.current) {
+      lastMessageIdRef.current = lastMsg.id
+      scrollToBottom()
+    } else if (isWaiting) {
+      scrollToBottom()
+    }
   }, [messages, isWaiting])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const handleScroll = async (e) => {
+    const { scrollTop } = e.currentTarget
+    if (scrollTop === 0 && messages.length > 0 && hasMore) {
+      const container = e.currentTarget
+      const previousHeight = container.scrollHeight
+      const oldestMsg = messages.find(m => typeof m.id === 'number') || messages[0]
+      if (!oldestMsg || !oldestMsg.id) return
+
+      try {
+        const res = await fetch(`/api/conversations/${activeChannelId}/messages?before_id=${oldestMsg.id}&limit=50`)
+        const data = await res.json()
+        if (data.items && data.items.length > 0) {
+          setMessages(prev => {
+            const newItems = data.items.filter(item => !prev.some(p => p.id === item.id))
+            return [...newItems, ...prev]
+          })
+          if (data.items.length < 50) {
+            setHasMore(false)
+          }
+          setTimeout(() => {
+            if (container) {
+              container.scrollTop = container.scrollHeight - previousHeight
+            }
+          }, 0)
+        } else {
+          setHasMore(false)
+        }
+      } catch (err) {
+        console.error('加载历史消息失败:', err)
+      }
+    }
   }
 
   const fetchConversations = async () => {
@@ -264,6 +316,28 @@ export default function App() {
     if (['html', 'js', 'css', 'json', 'py', 'java', 'cpp', 'md', 'ts'].includes(ext)) return 'Code · 源文件'
     return mimeType || '未知类型'
   }
+
+  const isTextFile = (name) => {
+    if (!name) return false
+    const ext = name.split('.').pop().toLowerCase()
+    return ['md', 'html', 'txt', 'json', 'js', 'ts', 'jsx', 'css', 'py', 'yaml', 'yml', 'xml', 'log'].includes(ext)
+  }
+
+  const handlePreviewFile = async (name, url) => {
+    try {
+      const res = await fetch(url)
+      const content = await res.text()
+      const ext = name.split('.').pop().toLowerCase()
+      let type = 'text'
+      if (ext === 'md') type = 'md'
+      else if (ext === 'html') type = 'html'
+      setPreviewFile({ name, url, content, type })
+    } catch (err) {
+      console.error('预览文件失败:', err)
+      alert('无法加载文件内容')
+    }
+  }
+
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -293,7 +367,7 @@ export default function App() {
               </div>
               <div className="chat-meta">
                 <span className="chat-title">{item.channel_name}</span>
-                <span className="chat-subtitle">{item.channel_id}</span>
+                <span className="chat-subtitle">{item.last_message || item.channel_id}</span>
               </div>
             </button>
           ))}
@@ -370,7 +444,7 @@ export default function App() {
           </section>
         )}
 
-        <div className="messages">
+        <div className="messages" onScroll={handleScroll}>
           {messages.map((msg, index) => {
             const isUser = msg.role === 'user'
             const isSystem = msg.role === 'system'
@@ -392,7 +466,9 @@ export default function App() {
                     msg.content.trim() !== `[图片] ${msg.file_name}` && 
                     msg.content.trim() !== `[图片]${msg.file_name}`
                   )) && (
-                    <div>{msg.content}</div>
+                     <div className="markdown-body">
+                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                     </div>
                   )}
                   {msg.file_url && (
                     <div className="message-attachment">
@@ -405,14 +481,18 @@ export default function App() {
                           style={{ cursor: 'zoom-in' }}
                         />
                       ) : (
-                        <div className="file-attachment-card">
+                        <div 
+                          className={`file-attachment-card ${isTextFile(msg.file_name) ? 'clickable' : ''}`}
+                          onClick={() => isTextFile(msg.file_name) && handlePreviewFile(msg.file_name, msg.file_url)}
+                        >
                           <div className={`file-icon ${getFileClass(msg.file_name)}`}>{getFileIcon(msg.file_name)}</div>
                           <div className="file-meta">
                             <span className="file-name">{msg.file_name || '文件'}</span>
                             <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                           </div>
-                          <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer">
-                             <Download size={20} />
+
+                          <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                             <Download size={18} />
                           </a>
                         </div>
                       )}
@@ -484,6 +564,40 @@ export default function App() {
         <div className="image-preview-overlay" onClick={() => setPreviewImage(null)}>
           <button className="close-preview" onClick={() => setPreviewImage(null)}><X size={24} /></button>
           <img src={previewImage} alt="Preview" onClick={(e) => e.stopPropagation()} />
+        </div>,
+        document.body
+      )}
+      {previewFile && createPortal(
+        <div className="file-preview-overlay" onClick={() => setPreviewFile(null)}>
+          <div className="file-preview-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="file-preview-header">
+              <span className="file-preview-title">{previewFile.name}</span>
+              <button className="close-preview-btn" onClick={() => setPreviewFile(null)}><X size={24} /></button>
+            </div>
+            <div className="file-preview-body">
+              {previewFile.type === 'md' && (
+                <div className="markdown-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{previewFile.content}</ReactMarkdown>
+                </div>
+              )}
+              {previewFile.type === 'html' && (
+                <iframe 
+                  srcDoc={previewFile.content} 
+                  title={previewFile.name} 
+                  style={{ width: '100%', height: '100%', minHeight: '500px', border: 'none', background: 'white' }}
+                />
+              )}
+              {previewFile.type === 'text' && (
+                <SyntaxHighlighter 
+                  language={previewFile.name.split('.').pop().toLowerCase()} 
+                  style={atomDark}
+                  customStyle={{ margin: 0, borderRadius: 'var(--radius-md)', padding: '16px' }}
+                >
+                  {previewFile.content}
+                </SyntaxHighlighter>
+              )}
+            </div>
+          </div>
         </div>,
         document.body
       )}

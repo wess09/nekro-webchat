@@ -41,6 +41,37 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def get_upload_path(filename: str, mime_type: str) -> tuple[Path, str]:
+    """
+    根据文件名和 mime_type 生成分类文件夹及日期文件夹
+    返回: (本地绝对路径 Path, 对外相对 URL 字符串)
+    """
+    from datetime import datetime
+    
+    if mime_type.startswith("image/"):
+        category = "images"
+    elif mime_type.startswith("video/"):
+        category = "videos"
+    elif mime_type.startswith("audio/"):
+        category = "audios"
+    else:
+        category = "documents"
+        
+    date_str = datetime.now().strftime("%Y%m%d")
+    target_dir = UPLOAD_DIR / category / date_str
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    unique_prefix = uuid.uuid4().hex[:12]
+    safe_name = Path(filename).name
+    target_file_name = f"{unique_prefix}_{safe_name}"
+    
+    target_path = target_dir / target_file_name
+    relative_url = f"/uploads/{category}/{date_str}/{target_file_name}"
+    
+    return target_path, relative_url
+
+
+
 class BrowserHub:
     def __init__(self) -> None:
         self._clients: dict[WebSocket, str] = {}
@@ -155,10 +186,9 @@ class WebChatSSEClient(SSEClient):
             mime_type = (meta.removeprefix("data:").split(";", 1)[0] or "application/octet-stream")
             suffix = getattr(segment, "suffix", "") or ""
             file_name = getattr(segment, "name", "") or f"{message_id}{suffix}"
-            target = UPLOAD_DIR / f"{message_id}_{Path(file_name).name}"
+            target, file_url = get_upload_path(file_name, mime_type)
             data_bytes = base64.b64decode(b64)
             target.write_bytes(data_bytes)
-            file_url = f"/uploads/{target.name}"
             file_size = len(data_bytes)
             break
 
@@ -266,46 +296,84 @@ async def status() -> dict[str, Any]:
     }
 
 
+async def pack_single_conversation(session, conv) -> dict[str, Any]:
+    from sqlalchemy import select
+    from app.database import ChatMessage, conversation_to_dict
+    msg_res = await session.execute(
+        select(ChatMessage)
+        .where(ChatMessage.conversation_id == conv.id)
+        .order_by(ChatMessage.id.desc())
+        .limit(1)
+    )
+    last_msg = msg_res.scalar_one_or_none()
+    d = conversation_to_dict(conv)
+    if last_msg:
+        if last_msg.file_url:
+            if (last_msg.mime_type or "").startswith("image/"):
+                d["last_message"] = f"[图片] {last_msg.file_name}"
+            else:
+                d["last_message"] = f"[文件] {last_msg.file_name}"
+        else:
+            d["last_message"] = last_msg.content
+    else:
+        d["last_message"] = "暂无消息"
+    return d
+
+
+async def get_conversations_with_last_message(session) -> list[dict[str, Any]]:
+    from sqlalchemy import select
+    from app.database import Conversation
+    res = await session.execute(select(Conversation).order_by(Conversation.updated_at.desc()))
+    convs = res.scalars().all()
+    return [await pack_single_conversation(session, c) for c in convs]
+
+
 @app.get("/api/conversations")
 async def api_conversations() -> dict[str, Any]:
-    conversations = await list_conversations()
-    return {"items": [conversation_to_dict(item) for item in conversations]}
+    from app.database import SessionLocal
+    async with SessionLocal() as session:
+        items = await get_conversations_with_last_message(session)
+        return {"items": items}
 
 
 @app.post("/api/conversations")
 async def api_create_conversation(payload: dict[str, str]) -> dict[str, Any]:
+    from app.database import SessionLocal, create_conversation
     conversation = await create_conversation(payload.get("channel_name", "新对话"))
     await ensure_subscribed(conversation.channel_id)
-    return conversation_to_dict(conversation)
+    async with SessionLocal() as session:
+        return await pack_single_conversation(session, conversation)
 
 
 @app.patch("/api/conversations/{channel_id}")
 async def api_update_conversation(channel_id: str, payload: dict[str, str]) -> dict[str, Any]:
+    from app.database import SessionLocal, update_conversation_profile
     conversation = await update_conversation_profile(channel_id, payload)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
-    return conversation_to_dict(conversation)
+    async with SessionLocal() as session:
+        return await pack_single_conversation(session, conversation)
 
 
 @app.get("/api/conversations/{channel_id}/messages")
-async def api_messages(channel_id: str, limit: int = 80) -> dict[str, Any]:
+async def api_messages(channel_id: str, before_id: int | None = None, limit: int = 50) -> dict[str, Any]:
     conversation = await get_conversation(channel_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
-    rows = await list_recent_messages(channel_id, limit=limit)
+    rows = await list_recent_messages(channel_id, before_id=before_id, limit=limit)
     return {"items": [message_payload(row, conversation) for row in rows]}
 
 
 @app.post("/api/upload")
 async def api_upload(file_data: UploadFile = FastAPIFile(...)) -> dict[str, Any]:
-    safe_name = Path(file_data.filename or "file").name
-    target = UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
+    mime = file_data.content_type or "application/octet-stream"
+    target, file_url = get_upload_path(file_data.filename or "file", mime)
     with target.open("wb") as out:
         shutil.copyfileobj(file_data.file, out)
     return {
-        "file_url": f"/uploads/{target.name}",
-        "file_name": safe_name,
-        "mime_type": file_data.content_type or "application/octet-stream",
+        "file_url": file_url,
+        "file_name": Path(file_data.filename or "file").name,
+        "mime_type": mime,
         "file_size": target.stat().st_size,
         "file_path": str(target),
     }
@@ -313,18 +381,22 @@ async def api_upload(file_data: UploadFile = FastAPIFile(...)) -> dict[str, Any]
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
-    conversations = await list_conversations()
-    current = conversations[0]
-    await hub.connect(websocket, current.channel_id)
-    await websocket.send_json({"type": "status", "connected": client.running})
-    await websocket.send_json({"type": "conversations", "items": [conversation_to_dict(item) for item in conversations]})
-
-    rows = await list_recent_messages(current.channel_id)
-    await websocket.send_json(
-        {"type": "history", "channel_id": current.channel_id, "items": [message_payload(row, current) for row in rows]},
-    )
-
     try:
+        conversations = await list_conversations()
+        current = conversations[0]
+        await hub.connect(websocket, current.channel_id)
+        await websocket.send_json({"type": "status", "connected": client.running})
+
+        from app.database import SessionLocal
+        async with SessionLocal() as session:
+            ws_items = await get_conversations_with_last_message(session)
+            await websocket.send_json({"type": "conversations", "items": ws_items})
+
+        rows = await list_recent_messages(current.channel_id)
+        await websocket.send_json(
+            {"type": "history", "channel_id": current.channel_id, "items": [message_payload(row, current) for row in rows]},
+        )
+
         while True:
             payload = await websocket.receive_json()
             action = payload.get("action", "send")

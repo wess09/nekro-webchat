@@ -435,7 +435,7 @@ class SSEClient:
         self.stats["total_events_received"] += 1
 
         request_id = data.get("request_id")
-        request_data = data.get("data", {})
+        request_data = data.get("data") if ("data" in data and data.get("data") is not None) else data
         handler = self.event_handlers[event_type]
 
         model_map = {

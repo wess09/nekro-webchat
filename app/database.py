@@ -217,15 +217,14 @@ async def save_message(
         return message
 
 
-async def list_recent_messages(channel_id: str, limit: int = 80) -> list[ChatMessage]:
+async def list_recent_messages(channel_id: str, before_id: int | None = None, limit: int = 50) -> list[ChatMessage]:
     async with SessionLocal() as session:
         conversation = await get_or_create_conversation(session, channel_id=channel_id)
-        result = await session.execute(
-            select(ChatMessage)
-            .where(ChatMessage.conversation_id == conversation.id)
-            .order_by(ChatMessage.id.desc())
-            .limit(limit),
-        )
+        stmt = select(ChatMessage).where(ChatMessage.conversation_id == conversation.id)
+        if before_id is not None:
+            stmt = stmt.where(ChatMessage.id < before_id)
+        stmt = stmt.order_by(ChatMessage.id.desc()).limit(limit)
+        result = await session.execute(stmt)
         return list(reversed(result.scalars().all()))
 
 

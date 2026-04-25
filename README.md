@@ -1,47 +1,59 @@
-# ![](doc/logo.png) Nekro WebChat
+# <img src="doc/logo.png" width="40" height="40" style="vertical-align: middle; margin-right: 8px;" /> Nekro WebChat
 
-NekroAgent SSE 适配器的网页聊天客户端。
+Nekro WebChat 是一个为 NekroAgent 量身定制的、基于 SSE（Server-Sent Events）适配器协议开发的现代网页聊天客户端。
 
-## 功能特性
+## 核心特性
 
-* 通过 `nekro-agent-sse-sdk` 连接到 NekroAgent
-* 基于 WebSocket 的浏览器聊天界面
-* 将用户消息作为 SSE 适配器频道发送到 NekroAgent
-* 实时显示 NekroAgent 返回的消息
-* 使用 SQLite 存储会话与消息记录
-* 提供 SSE 适配器所需的用户、频道与机器人信息处理器
+- 深度协议集成：底层基于 nekro-agent-sse-sdk 设计，完美贴合网关通信标准。
+- 动态隔离存储：智能识别附件属性并根据流媒体类别与物理日期执行持久化隔离。
+- 复合文档预览：支持 Markdown 排版表格渲染、HTML 沙盒执行以及纯文本源码的精准着色。
+- 无状态轮询缓存：配合 SQLite 本地记录链，防止网络波动引发的重连闪断损失。
 
-## 运行方式
+## 部署与启动
+
+此项目采用前后端分离架构，启动步骤如下：
+
+### 1. 后端主控服务 (FastAPI)
 
 ```bash
-cd nekro-webchat
+# 同步安装环境依赖
 uv sync
+
+# 复制并配置环境变量
 copy .env.example .env
-poe dev
+
+# 启动核心逻辑服务
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
-打开浏览器访问：
+### 2. 前端用户界面 (Vite / React)
 
-```text
-http://127.0.0.1:8765
+```bash
+# 导航至前端沙盒目录
+cd frontend
+
+# 加载 Node 依赖包
+npm install
+
+# 打开前端构建管道
+npm run dev
 ```
 
-请确保 NekroAgent 已启动，并已启用 SSE 适配器。
+运行成功后，可通过以下入口进行交互测试：
+- 前端调试地址（推荐）：`http://127.0.0.1:5173`
+- 后端服务接口：`http://127.0.0.1:8765`
 
-如果 SSE 适配器设置了访问密钥，请在 `.env` 中配置 `NEKRO_ACCESS_KEY`。
 
-## 默认聊天 Key
+## 基础配置索引
 
-此客户端默认创建的 NekroAgent 聊天 Key 为：
-
+### 默认通信路由 Key
+系统预置生成的网关路由匹配管道标识为：
 ```text
 sse-webchat-webchat_main
 ```
 
-## 数据存储位置
-
-默认数据文件存储在：
-
+### 归档存储快照
+持久化事务日志、用户轨迹以及会话模型落盘节点位于：
 ```text
 data/webchat.db
 ```
