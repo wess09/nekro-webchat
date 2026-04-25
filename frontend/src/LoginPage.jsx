@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { login, register } from './auth'
 
 /**
@@ -13,24 +13,77 @@ export default function LoginPage({ onLoginSuccess }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
+  const captchaInstanceRef = useRef(null)
+  const stateRef = useRef()
+  stateRef.current = { username, password, displayName, isRegister }
+
+  const proceedWithAuth = async (verifyParam) => {
     setLoading(true)
+    setError('')
     try {
+      const { username, password, displayName, isRegister } = stateRef.current
       if (isRegister) {
-        const data = await register(username, password, displayName)
+        const data = await register(username, password, displayName, verifyParam)
         onLoginSuccess(data.user)
       } else {
-        const data = await login(username, password)
+        const data = await login(username, password, verifyParam)
         onLoginSuccess(data.user)
       }
     } catch (err) {
       setError(err.message)
+      if (captchaInstanceRef.current && typeof captchaInstanceRef.current.refresh === 'function') {
+        captchaInstanceRef.current.refresh()
+      }
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (typeof window.initAliyunCaptcha !== 'function') {
+      console.warn('window.initAliyunCaptcha is not available')
+      return
+    }
+
+    const sceneId = isRegister
+      ? import.meta.env.VITE_ALIYUN_CAPTCHA_REGISTER_SCENE
+      : import.meta.env.VITE_ALIYUN_CAPTCHA_LOGIN_SCENE
+
+
+    window.initAliyunCaptcha({
+      SceneId: sceneId,
+      mode: "popup",
+      element: "#captcha-element",
+      button: "#captcha-trigger-btn",
+      success: function (captchaVerifyParam) {
+        proceedWithAuth(captchaVerifyParam)
+      },
+      fail: function (result) {
+        console.error('Captcha Fail:', result)
+      },
+      getInstance: function (instance) {
+        captchaInstanceRef.current = instance
+      },
+      server: ['captcha-esa-open.aliyuncs.com', 'captcha-esa-open-b.aliyuncs.com'],
+      slideStyle: {
+        width: 360,
+        height: 40,
+      },
+    })
+  }, [isRegister])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    setError('')
+    
+    const btn = document.getElementById('captcha-trigger-btn')
+    if (btn) {
+      btn.click()
+    } else {
+      setError('验证码组件加载中，请稍候')
+    }
+  }
+
 
   const switchMode = () => {
     setError('')
@@ -100,6 +153,10 @@ export default function LoginPage({ onLoginSuccess }) {
           </div>
 
           {error && <div className="auth-error">{error}</div>}
+
+          {/* 预留的验证码元素及隐藏触发器 */}
+          <div id="captcha-element"></div>
+          <button id="captcha-trigger-btn" type="button" style={{ display: 'none' }}></button>
 
           <button
             className="auth-submit"

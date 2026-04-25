@@ -43,7 +43,10 @@ export async function authFetch(url, options = {}) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch(url, { ...options, headers })
+  const API_URL = import.meta.env.VITE_API_URL || ''
+  const finalUrl = url.startsWith('/api') ? `${API_URL}${url}` : url
+  const res = await fetch(finalUrl, { ...options, headers })
+
   if (res.status === 401) {
     clearAuth()
     window.location.reload()
@@ -51,9 +54,14 @@ export async function authFetch(url, options = {}) {
   return res
 }
 
+const API_URL = import.meta.env.VITE_API_URL || ''
+
 /** 注册 */
-export async function register(username, password, displayName) {
-  const res = await fetch('/api/auth/register', {
+export async function register(username, password, displayName, captchaVerifyParam = '') {
+  const url = captchaVerifyParam
+    ? `${API_URL}/api/auth/register?captcha_verify_param=${encodeURIComponent(captchaVerifyParam)}`
+    : `${API_URL}/api/auth/register`
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, display_name: displayName }),
@@ -65,8 +73,11 @@ export async function register(username, password, displayName) {
 }
 
 /** 登录 */
-export async function login(username, password) {
-  const res = await fetch('/api/auth/login', {
+export async function login(username, password, captchaVerifyParam = '') {
+  const url = captchaVerifyParam
+    ? `${API_URL}/api/auth/login?captcha_verify_param=${encodeURIComponent(captchaVerifyParam)}`
+    : `${API_URL}/api/auth/login`
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -82,7 +93,7 @@ export async function verifyToken() {
   const token = getToken()
   if (!token) return null
   try {
-    const res = await fetch('/api/auth/me', {
+    const res = await fetch(`${API_URL}/api/auth/me`, {
       headers: { 'Authorization': `Bearer ${token}` },
     })
     if (!res.ok) {
@@ -96,3 +107,4 @@ export async function verifyToken() {
     return null
   }
 }
+
