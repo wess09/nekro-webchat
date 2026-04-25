@@ -232,7 +232,8 @@ client = WebChatSSEClient(
 )
 
 app = FastAPI(title="Nekro WebChat")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+FRONTEND_STATIC = BASE_DIR / "frontend" / "static"
+app.mount("/static", StaticFiles(directory=FRONTEND_STATIC if FRONTEND_STATIC.exists() else STATIC_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 

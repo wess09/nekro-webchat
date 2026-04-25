@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function App() {
   const [conversations, setConversations] = useState([])
@@ -8,6 +9,8 @@ export default function App() {
   const [input, setInput] = useState('')
   const [pendingFile, setPendingFile] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
+  const [isWaiting, setIsWaiting] = useState(false)
+  const [previewImage, setPreviewImage] = useState(null)
   const [profileData, setProfileData] = useState({
     channel_name: '',
     user_name: '',
@@ -21,13 +24,22 @@ export default function App() {
   const fileInputRef = useRef(null)
   const userAvatarRef = useRef(null)
   const aiAvatarRef = useRef(null)
+  const activeChannelIdRef = useRef('')
+  const isComponentMounted = useRef(true)
 
   const activeConv = conversations.find(c => c.channel_id === activeChannelId)
 
   useEffect(() => {
+    activeChannelIdRef.current = activeChannelId
+    setIsWaiting(false) // 切换对话时重置等待状态
+  }, [activeChannelId])
+
+  useEffect(() => {
+    isComponentMounted.current = true
     fetchConversations()
     connectWebSocket()
     return () => {
+      isComponentMounted.current = false
       if (socketRef.current) socketRef.current.close()
     }
   }, [])
@@ -46,7 +58,7 @@ export default function App() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, isWaiting])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -58,7 +70,7 @@ export default function App() {
       const data = await res.json()
       const items = data.items || []
       setConversations(items)
-      if (items.length && !activeChannelId) {
+      if (items.length && !activeChannelIdRef.current) {
         setActiveChannelId(items[0].channel_id)
       }
     } catch (err) {
@@ -74,33 +86,51 @@ export default function App() {
     const ws = new WebSocket(wsUrl)
     socketRef.current = ws
 
-    ws.onopen = () => setStatus({ text: '已连接', ok: true })
+    ws.onopen = () => {
+      if (!isComponentMounted.current) {
+        ws.close()
+        return
+      }
+      setStatus({ text: '已连接', ok: true })
+    }
+
     ws.onclose = () => {
+      if (!isComponentMounted.current) return
       setStatus({ text: '已断开，重连中', ok: false })
-      setTimeout(connectWebSocket, 1200)
+      setTimeout(() => {
+        if (isComponentMounted.current) connectWebSocket()
+      }, 1200)
     }
 
     ws.onmessage = (event) => {
+      if (!isComponentMounted.current) return
       const payload = JSON.parse(event.data)
       if (payload.type === 'message') {
-        if (!activeChannelId || payload.channel_id === activeChannelId || !payload.channel_id) {
-          setMessages(prev => [...prev, payload])
+        if (!activeChannelIdRef.current || payload.channel_id === activeChannelIdRef.current || !payload.channel_id) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === payload.id)) return prev
+            return [...prev, payload]
+          })
+          if (payload.role !== 'user') {
+            setIsWaiting(false)
+          }
         }
         fetchConversations()
       } else if (payload.type === 'history') {
         if (payload.channel_id) setActiveChannelId(payload.channel_id)
         setMessages(payload.items || [])
-        fetchConversations()
+        setIsWaiting(false)
       } else if (payload.type === 'conversations') {
         const items = payload.items || []
         setConversations(items)
-        if (items.length && !activeChannelId) {
+        if (items.length && !activeChannelIdRef.current) {
           setActiveChannelId(items[0].channel_id)
         }
       } else if (payload.type === 'status') {
         setStatus({ text: payload.connected ? '已连接' : '连接中', ok: payload.connected })
       } else if (payload.type === 'error') {
         setMessages(prev => [...prev, { role: 'system', content: payload.message }])
+        setIsWaiting(false)
       }
     }
   }
@@ -178,6 +208,7 @@ export default function App() {
     if ((!content && !pendingFile) || socketRef.current?.readyState !== WebSocket.OPEN || !activeChannelId) return
 
     try {
+      setIsWaiting(true)
       let fileInfo = null
       if (pendingFile) {
         fileInfo = await uploadFile(pendingFile)
@@ -194,14 +225,44 @@ export default function App() {
       setPendingFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err) {
+      setIsWaiting(false)
       console.error('发送消息失败:', err)
     }
   }
 
-  const getInitials = (name) => {
-    return (name || '?').trim().slice(0, 2).toUpperCase()
+  const getFileIcon = (fileName) => {
+    const ext = (fileName || '').split('.').pop().toLowerCase()
+    if (['html', 'js', 'css', 'json', 'py', 'java', 'cpp', 'md', 'ts'].includes(ext)) return '</>'
+    if (['txt', 'log'].includes(ext)) return 'TXT'
+    if (['doc', 'docx'].includes(ext)) return 'DOC'
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return 'XLS'
+    if (['ppt', 'pptx'].includes(ext)) return 'PPT'
+    if (ext === 'pdf') return 'PDF'
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'ZIP'
+    return 'FILE'
   }
-
+  const getFileClass = (fileName) => {
+    const ext = (fileName || '').split('.').pop().toLowerCase()
+    if (['html', 'js', 'css', 'json', 'py', 'java', 'cpp', 'md', 'ts'].includes(ext)) return 'icon-code'
+    if (['txt', 'log'].includes(ext)) return 'icon-txt'
+    if (['doc', 'docx'].includes(ext)) return 'icon-doc'
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return 'icon-xls'
+    if (['ppt', 'pptx'].includes(ext)) return 'icon-ppt'
+    if (ext === 'pdf') return 'icon-pdf'
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'icon-zip'
+    return ''
+  }
+  const getFileSubtitle = (fileName, mimeType) => {
+    const ext = (fileName || '').split('.').pop().toLowerCase()
+    if (['txt', 'log'].includes(ext)) return 'Text · 文本文件'
+    if (['doc', 'docx'].includes(ext)) return 'Word · 文档'
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return 'Excel · 表格'
+    if (['ppt', 'pptx'].includes(ext)) return 'PowerPoint · 演示文稿'
+    if (ext === 'pdf') return 'PDF · 便携式文档'
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'Archive · 压缩包'
+    if (['html', 'js', 'css', 'json', 'py', 'java', 'cpp', 'md', 'ts'].includes(ext)) return 'Code · 源文件'
+    return mimeType || '未知类型'
+  }
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -227,7 +288,7 @@ export default function App() {
               onClick={() => selectConversation(item.channel_id)}
             >
               <div className="chat-avatar">
-                <img src={item.ai_avatar || '/static/webchat.png'} alt={item.ai_name} />
+                <img src={item.ai_avatar || '/static/ai.png'} alt={item.ai_name} />
               </div>
               <div className="chat-meta">
                 <span className="chat-title">{item.channel_name}</span>
@@ -312,29 +373,47 @@ export default function App() {
           {messages.map((msg, index) => {
             const isUser = msg.role === 'user'
             const isSystem = msg.role === 'system'
-            const avatarUrl = isUser ? activeConv?.user_avatar : (activeConv?.ai_avatar || '/static/webchat.png')
+            const avatarUrl = isUser ? (activeConv?.user_avatar || '/static/user.png') : (activeConv?.ai_avatar || '/static/ai.png')
+            const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') && 
+              (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
             
             return (
               <div key={index} className={`bubble-row ${msg.role}`}>
                 {!isSystem && (
                   <div className="msg-avatar">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt={msg.sender_name} />
-                    ) : (
-                      getInitials(msg.sender_name)
-                    )}
+                    <img src={avatarUrl} alt={msg.sender_name} />
                   </div>
                 )}
-                <div className="bubble">
-                  {msg.content && <div>{msg.content}</div>}
+                <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''}`}>
+                  {msg.content && (!msg.file_url || (
+                    msg.content.trim() !== `[文件] ${msg.file_name}` && 
+                    msg.content.trim() !== `[文件]${msg.file_name}` &&
+                    msg.content.trim() !== `[图片] ${msg.file_name}` && 
+                    msg.content.trim() !== `[图片]${msg.file_name}`
+                  )) && (
+                    <div>{msg.content}</div>
+                  )}
                   {msg.file_url && (
                     <div className="message-attachment">
                       {(msg.mime_type || '').startsWith('image/') ? (
-                        <img className="bubble-image" src={msg.file_url} alt={msg.file_name || 'image'} />
+                        <img 
+                          className="bubble-image" 
+                          src={msg.file_url} 
+                          alt={msg.file_name || 'image'} 
+                          onClick={() => setPreviewImage(msg.file_url)}
+                          style={{ cursor: 'zoom-in' }}
+                        />
                       ) : (
-                        <a className="file-card" href={msg.file_url} target="_blank" rel="noreferrer">
-                          📎 {msg.file_name || '文件'}
-                        </a>
+                        <div className="file-attachment-card">
+                          <div className={`file-icon ${getFileClass(msg.file_name)}`}>{getFileIcon(msg.file_name)}</div>
+                          <div className="file-meta">
+                            <span className="file-name">{msg.file_name || '文件'}</span>
+                            <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
+                          </div>
+                          <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer">
+                            Download
+                          </a>
+                        </div>
                       )}
                     </div>
                   )}
@@ -342,6 +421,20 @@ export default function App() {
               </div>
             )
           })}
+
+          {isWaiting && (
+            <div className="bubble-row assistant typing-indicator-row">
+              <div className="msg-avatar">
+                <img src={activeConv?.ai_avatar || '/static/ai.png'} alt="AI" />
+              </div>
+              <div className="bubble typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -386,6 +479,13 @@ export default function App() {
           </button>
         </form>
       </section>
+      {previewImage && createPortal(
+        <div className="image-preview-overlay" onClick={() => setPreviewImage(null)}>
+          <button className="close-preview" onClick={() => setPreviewImage(null)}>×</button>
+          <img src={previewImage} alt="Preview" onClick={(e) => e.stopPropagation()} />
+        </div>,
+        document.body
+      )}
     </main>
   )
 }
