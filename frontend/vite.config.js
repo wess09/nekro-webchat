@@ -1,0 +1,32 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8765',
+        changeOrigin: true,
+      },
+      '/static': {
+        target: 'http://127.0.0.1:8765',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://127.0.0.1:8765',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:8765',
+        ws: true,
+        changeOrigin: true,
+      }
+    }
+  },
+  build: {
+    outDir: '../static',
+    emptyOutDir: false, // 保持 static/webchat.png
+  }
+})
