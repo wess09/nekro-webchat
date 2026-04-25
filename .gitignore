@@ -253,3 +253,4 @@ $RECYCLE.BIN/
 /frontend/dist/*
 /static/*
 /frontend/node_modules
+/data/*
