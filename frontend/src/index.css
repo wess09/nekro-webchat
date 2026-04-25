@@ -1,14 +1,14 @@
 :root {
-  --primary: #6366f1;
-  --primary-hover: #4f46e5;
-  --primary-light: #e0e7ff;
-  --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --primary: #E05252;
+  --primary-hover: #c94343;
+  --primary-light: #fbeaea;
+  --bg-gradient: linear-gradient(135deg, #efe6e6 0%, #dcd0d0 100%);
   --shell-bg: rgba(255, 255, 255, 0.85);
   --sidebar-bg: rgba(243, 244, 246, 0.5);
   --text-main: #1f2937;
   --text-muted: #6b7280;
   --border-color: rgba(229, 231, 235, 0.5);
-  --user-bubble: #6366f1;
+  --user-bubble: #E05252;
   --user-text: #ffffff;
   --ai-bubble: rgba(255, 255, 255, 0.9);
   --ai-text: #1f2937;
