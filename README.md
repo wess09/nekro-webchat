@@ -1,17 +1,17 @@
-# Nekro WebChat
+# ![](doc/logo.png) Nekro WebChat
 
-Standalone QQ-style web chat client for NekroAgent's SSE adapter.
+NekroAgent SSE 适配器的网页聊天客户端。
 
-## Features
+## 功能特性
 
-- Connects to NekroAgent through `nekro-agent-sse-sdk`
-- Browser chat UI over WebSocket
-- Sends user messages into NekroAgent as an SSE adapter channel
-- Displays messages sent back by NekroAgent in real time
-- Stores conversations and messages in SQLite
-- Provides user, channel and bot info handlers required by the SSE adapter
+* 通过 `nekro-agent-sse-sdk` 连接到 NekroAgent
+* 基于 WebSocket 的浏览器聊天界面
+* 将用户消息作为 SSE 适配器频道发送到 NekroAgent
+* 实时显示 NekroAgent 返回的消息
+* 使用 SQLite 存储会话与消息记录
+* 提供 SSE 适配器所需的用户、频道与机器人信息处理器
 
-## Run
+## 运行方式
 
 ```bash
 cd nekro-webchat
@@ -20,18 +20,28 @@ copy .env.example .env
 poe dev
 ```
 
-Open:
+打开浏览器访问：
 
 ```text
 http://127.0.0.1:8765
 ```
 
-Make sure NekroAgent is running and the SSE adapter is enabled. If the SSE adapter has an access key, set `NEKRO_ACCESS_KEY` in `.env`.
+请确保 NekroAgent 已启动，并已启用 SSE 适配器。
 
-The default NekroAgent chat key created by this client is:
+如果 SSE 适配器设置了访问密钥，请在 `.env` 中配置 `NEKRO_ACCESS_KEY`。
+
+## 默认聊天 Key
+
+此客户端默认创建的 NekroAgent 聊天 Key 为：
 
 ```text
 sse-webchat-webchat_main
 ```
 
-Data is stored at `data/webchat.db` by default.
+## 数据存储位置
+
+默认数据文件存储在：
+
+```text
+data/webchat.db
+```

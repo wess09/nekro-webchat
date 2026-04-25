@@ -19,6 +19,8 @@ export default function App() {
   const socketRef = useRef(null)
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
+  const userAvatarRef = useRef(null)
+  const aiAvatarRef = useRef(null)
 
   const activeConv = conversations.find(c => c.channel_id === activeChannelId)
 
@@ -67,8 +69,6 @@ export default function App() {
   const connectWebSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host
-    // 如果是 Vite 开发环境（通常是 localhost:5173），我们需要连接到后端的端口（8765）
-    // 但因为我们配置了 proxy，Vite 会自动转发 /ws，所以可以直接用当前 host
     const wsUrl = `${protocol}://${host}/ws`
     
     const ws = new WebSocket(wsUrl)
@@ -157,6 +157,21 @@ export default function App() {
     return await res.json()
   }
 
+  const handleAvatarUpload = async (e, type) => {
+    const file = e.target.files[0]
+    if (!file) return
+    try {
+      const data = await uploadFile(file)
+      if (type === 'user') {
+        setProfileData(prev => ({ ...prev, user_avatar: data.file_url }))
+      } else {
+        setProfileData(prev => ({ ...prev, ai_avatar: data.file_url }))
+      }
+    } catch (err) {
+      console.error('上传头像失败:', err)
+    }
+  }
+
   const handleSend = async (e) => {
     e.preventDefault()
     const content = input.trim()
@@ -212,11 +227,7 @@ export default function App() {
               onClick={() => selectConversation(item.channel_id)}
             >
               <div className="chat-avatar">
-                {item.ai_avatar ? (
-                  <img src={item.ai_avatar} alt={item.ai_name} />
-                ) : (
-                  getInitials(item.ai_name || item.channel_name)
-                )}
+                <img src={item.ai_avatar || '/static/webchat.png'} alt={item.ai_name} />
               </div>
               <div className="chat-meta">
                 <span className="chat-title">{item.channel_name}</span>
@@ -259,11 +270,17 @@ export default function App() {
               />
             </div>
             <div className="form-group">
-              <label>用户头像 URL</label>
-              <input 
-                value={profileData.user_avatar} 
-                onChange={e => setProfileData(prev => ({ ...prev, user_avatar: e.target.value }))} 
-              />
+              <label>用户头像</label>
+              <div className="avatar-upload-group">
+                <input 
+                  type="text"
+                  placeholder="头像 URL"
+                  value={profileData.user_avatar} 
+                  onChange={e => setProfileData(prev => ({ ...prev, user_avatar: e.target.value }))} 
+                />
+                <button type="button" className="upload-btn" onClick={() => userAvatarRef.current.click()}>上传</button>
+                <input type="file" ref={userAvatarRef} hidden accept="image/*" onChange={(e) => handleAvatarUpload(e, 'user')} />
+              </div>
             </div>
             <div className="form-group">
               <label>AI 名字</label>
@@ -273,11 +290,17 @@ export default function App() {
               />
             </div>
             <div className="form-group">
-              <label>AI 头像 URL</label>
-              <input 
-                value={profileData.ai_avatar} 
-                onChange={e => setProfileData(prev => ({ ...prev, ai_avatar: e.target.value }))} 
-              />
+              <label>AI 头像</label>
+              <div className="avatar-upload-group">
+                <input 
+                  type="text"
+                  placeholder="头像 URL"
+                  value={profileData.ai_avatar} 
+                  onChange={e => setProfileData(prev => ({ ...prev, ai_avatar: e.target.value }))} 
+                />
+                <button type="button" className="upload-btn" onClick={() => aiAvatarRef.current.click()}>上传</button>
+                <input type="file" ref={aiAvatarRef} hidden accept="image/*" onChange={(e) => handleAvatarUpload(e, 'ai')} />
+              </div>
             </div>
             <button className="save-button" type="button" onClick={saveProfileSettings}>
               保存设置
@@ -289,7 +312,7 @@ export default function App() {
           {messages.map((msg, index) => {
             const isUser = msg.role === 'user'
             const isSystem = msg.role === 'system'
-            const avatarUrl = isUser ? activeConv?.user_avatar : activeConv?.ai_avatar
+            const avatarUrl = isUser ? activeConv?.user_avatar : (activeConv?.ai_avatar || '/static/webchat.png')
             
             return (
               <div key={index} className={`bubble-row ${msg.role}`}>
