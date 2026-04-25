@@ -250,3 +250,6 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,windows,web
 
 /uploads/*
+/frontend/dist/*
+/static/*
+/frontend/node_modules
