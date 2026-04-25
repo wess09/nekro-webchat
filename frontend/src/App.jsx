@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X } from 'lucide-react'
 
 export default function App() {
   const [conversations, setConversations] = useState([])
@@ -232,14 +233,14 @@ export default function App() {
 
   const getFileIcon = (fileName) => {
     const ext = (fileName || '').split('.').pop().toLowerCase()
-    if (['html', 'js', 'css', 'json', 'py', 'java', 'cpp', 'md', 'ts'].includes(ext)) return '</>'
-    if (['txt', 'log'].includes(ext)) return 'TXT'
-    if (['doc', 'docx'].includes(ext)) return 'DOC'
-    if (['xls', 'xlsx', 'csv'].includes(ext)) return 'XLS'
-    if (['ppt', 'pptx'].includes(ext)) return 'PPT'
-    if (ext === 'pdf') return 'PDF'
-    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'ZIP'
-    return 'FILE'
+    if (['html', 'js', 'css', 'json', 'py', 'java', 'cpp', 'md', 'ts'].includes(ext)) return <FileCode size={20} />
+    if (['txt', 'log'].includes(ext)) return <FileText size={20} />
+    if (['doc', 'docx'].includes(ext)) return <FileText size={20} />
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return <FileSpreadsheet size={20} />
+    if (['ppt', 'pptx'].includes(ext)) return <Presentation size={20} />
+    if (ext === 'pdf') return <FileText size={20} />
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return <Archive size={20} />
+    return <FileText size={20} />
   }
   const getFileClass = (fileName) => {
     const ext = (fileName || '').split('.').pop().toLowerCase()
@@ -411,7 +412,7 @@ export default function App() {
                             <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                           </div>
                           <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer">
-                            Download
+                             <Download size={20} />
                           </a>
                         </div>
                       )}
@@ -481,7 +482,7 @@ export default function App() {
       </section>
       {previewImage && createPortal(
         <div className="image-preview-overlay" onClick={() => setPreviewImage(null)}>
-          <button className="close-preview" onClick={() => setPreviewImage(null)}>×</button>
+          <button className="close-preview" onClick={() => setPreviewImage(null)}><X size={24} /></button>
           <img src={previewImage} alt="Preview" onClick={(e) => e.stopPropagation()} />
         </div>,
         document.body
