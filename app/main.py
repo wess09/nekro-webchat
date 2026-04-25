@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
 
 from app.database import init_db, list_conversations
 from app.sse_client import client, ensure_subscribed
@@ -17,6 +19,15 @@ STATIC_DIR = BASE_DIR / "static"
 FRONTEND_STATIC = BASE_DIR / "frontend" / "static"
 
 app = FastAPI(title="Nekro WebChat")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex="https?://.*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount(
     "/static",
     StaticFiles(directory=FRONTEND_STATIC if FRONTEND_STATIC.exists() else STATIC_DIR),
