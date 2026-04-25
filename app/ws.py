@@ -26,25 +26,36 @@ router = APIRouter()
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
+    """
+    前端页面与后端进行全双工通信的核心 WebSocket 路由。
+    处理：客户端连接初始化、接收用户发出的消息、下发历史记录等。
+    """
     try:
+        # 1. 建立连接，并默认加入最近使用的第一个会话
         conversations = await list_conversations()
         current = conversations[0]
         await hub.connect(websocket, current.channel_id)
+        
+        # 2. 推送当前与 NekroAgent 平台的连接健康状态
         await websocket.send_json({"type": "status", "connected": client.running})
 
+        # 3. 推送最新的侧边栏会话列表
         async with SessionLocal() as session:
             ws_items = await get_conversations_with_last_message(session)
             await websocket.send_json({"type": "conversations", "items": ws_items})
 
+        # 4. 推送当前会话的历史聊天记录
         rows = await list_recent_messages(current.channel_id)
         await websocket.send_json(
             {"type": "history", "channel_id": current.channel_id, "items": [message_payload(row, current) for row in rows]},
         )
 
+        # 5. 持续循环监听来自前端浏览器的操作
         while True:
             payload = await websocket.receive_json()
             action = payload.get("action", "send")
 
+            # 动作 A: 用户在前端切换了聊天会话
             if action == "select":
                 channel_id = str(payload.get("channel_id", ""))
                 conversation = await get_conversation(channel_id)
@@ -52,18 +63,24 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "message": "会话不存在"})
                     continue
                 current = conversation
+                
+                # 更新长连接中的“关注频道”标记
                 await hub.set_channel(websocket, channel_id)
                 rows = await list_recent_messages(channel_id)
+                # 重新推送该会话的历史记录给前端
                 await websocket.send_json(
                     {"type": "history", "channel_id": channel_id, "items": [message_payload(row, current) for row in rows]},
                 )
                 continue
 
+            # 动作 B: 用户在前端发送消息
             if action != "send":
                 continue
 
             content = str(payload.get("content", "")).strip()
             file_info = payload.get("file") if isinstance(payload.get("file"), dict) else None
+            
+            # 发空消息直接忽略
             if not content and not file_info:
                 continue
 
@@ -72,8 +89,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "error", "message": "会话不存在"})
                 continue
             current = conversation
+            
+            # 确保长连接对该频道处于订阅状态
             await ensure_subscribed(conversation.channel_id)
 
+            # 保存用户发送的消息到本地 DB
             message_id = f"web_{uuid.uuid4().hex}"
             saved = await save_message(
                 channel_id=conversation.channel_id,
@@ -87,8 +107,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 mime_type=str(file_info.get("mime_type", "")) if file_info else "",
                 file_size=int(file_info.get("file_size", 0)) if file_info else 0,
             )
+            
+            # 广播给当前会话下的其它前端客户端（例如多开网页同步）
             await hub.broadcast(conversation.channel_id, message_payload(saved, conversation))
 
+            # 拼装为 NekroAgent SDK 认可的消息段
             segments: list[MessageSegmentUnion] = []
             if content:
                 segments.append(text(content))
@@ -101,6 +124,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 else:
                     segments.append(sdk_file(file_path=file_path, name=file_name, mime_type=mime_type))
 
+            # 通过 SDK 上报给 AI 代理服务端，触发 AI 的业务流
             ok = await client.send_message(
                 conversation.channel_id,
                 ReceiveMessage(
@@ -121,4 +145,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if not ok:
                 await websocket.send_json({"type": "error", "message": client.last_error or "发送到 NekroAgent 失败"})
     except WebSocketDisconnect:
+        # 前端连接意外断开或刷新，安全移除
         await hub.disconnect(websocket)
+

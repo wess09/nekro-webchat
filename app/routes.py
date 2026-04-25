@@ -31,8 +31,12 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any]:
+    """
+    组装单个会话的详细信息，并附加上最后一条聊天消息的预览。
+    """
     from sqlalchemy import select
 
+    # 查询当前会话的最新一条消息
     msg_res = await session.execute(
         select(ChatMessage)
         .where(ChatMessage.conversation_id == conv.id)
@@ -41,6 +45,8 @@ async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any
     )
     last_msg = msg_res.scalar_one_or_none()
     d = conversation_to_dict(conv)
+    
+    # 格式化最后一条消息的展示文本
     if last_msg:
         if last_msg.file_url:
             if (last_msg.mime_type or "").startswith("image/"):
@@ -55,6 +61,9 @@ async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any
 
 
 async def get_conversations_with_last_message(session) -> list[dict[str, Any]]:
+    """
+    按更新时间倒序获取所有会话列表。
+    """
     from sqlalchemy import select
 
     res = await session.execute(select(Conversation).order_by(Conversation.updated_at.desc()))
@@ -63,16 +72,18 @@ async def get_conversations_with_last_message(session) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# 路由
+# HTTP 路由接口
 # ---------------------------------------------------------------------------
 
 @router.get("/")
 async def index() -> FileResponse:
+    """提供单页面应用的首页 HTML 载入。"""
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @router.get("/api/status")
 async def status() -> dict[str, Any]:
+    """获取应用配置，以及与 NekroAgent 平台的连接健康状态。"""
     from app.config import settings
 
     return {
@@ -86,6 +97,7 @@ async def status() -> dict[str, Any]:
 
 @router.get("/api/conversations")
 async def api_conversations() -> dict[str, Any]:
+    """获取完整的会话历史列表，带最新一条消息预览。"""
     async with SessionLocal() as session:
         items = await get_conversations_with_last_message(session)
         return {"items": items}
@@ -93,7 +105,9 @@ async def api_conversations() -> dict[str, Any]:
 
 @router.post("/api/conversations")
 async def api_create_conversation(payload: dict[str, str]) -> dict[str, Any]:
+    """用户在前端主动发起一个新的聊天频道。"""
     conversation = await create_conversation(payload.get("channel_name", "新对话"))
+    # 在 SSE 客户端向 NekroAgent 监听此频道
     await ensure_subscribed(conversation.channel_id)
     async with SessionLocal() as session:
         return await pack_single_conversation(session, conversation)
@@ -101,6 +115,7 @@ async def api_create_conversation(payload: dict[str, str]) -> dict[str, Any]:
 
 @router.patch("/api/conversations/{channel_id}")
 async def api_update_conversation(channel_id: str, payload: dict[str, str]) -> dict[str, Any]:
+    """修改某个会话的属性（如：AI昵称、用户头像等）。"""
     conversation = await update_conversation_profile(channel_id, payload)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -110,6 +125,7 @@ async def api_update_conversation(channel_id: str, payload: dict[str, str]) -> d
 
 @router.get("/api/conversations/{channel_id}/messages")
 async def api_messages(channel_id: str, before_id: int | None = None, limit: int = 50) -> dict[str, Any]:
+    """获取指定会话的历史聊天记录（支持分页）。"""
     conversation = await get_conversation(channel_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -119,6 +135,10 @@ async def api_messages(channel_id: str, before_id: int | None = None, limit: int
 
 @router.post("/api/upload")
 async def api_upload(file_data: UploadFile = FastAPIFile(...)) -> dict[str, Any]:
+    """
+    通用文件/图片上传接口。
+    前端拖拽/选中文件后在此流式落盘，并生成可直接渲染的 URL。
+    """
     mime = file_data.content_type or "application/octet-stream"
     target, file_url = get_upload_path(file_data.filename or "file", mime)
     with target.open("wb") as out:
@@ -130,3 +150,4 @@ async def api_upload(file_data: UploadFile = FastAPIFile(...)) -> dict[str, Any]
         "file_size": target.stat().st_size,
         "file_path": str(target),
     }
+
