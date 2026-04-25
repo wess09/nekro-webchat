@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+.env
+__pycache__
+*.pyc
+frontend/
+node_modules/
+data/
+uploads/
+*.log
