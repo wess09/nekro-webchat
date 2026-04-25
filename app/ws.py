@@ -5,18 +5,19 @@ import uuid
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from nekro_agent_sse_sdk import ReceiveMessage
-from nekro_agent_sse_sdk import file as sdk_file, image, text
+from nekro_agent_sse_sdk import at, file as sdk_file, image, text
 from nekro_agent_sse_sdk.models import MessageSegmentUnion
 
 from app.config import settings
 from app.database import (
     Conversation,
     SessionLocal,
-    create_conversation,
     get_conversation,
-    list_conversations,
+    get_or_create_user_default_conversation,
+    list_user_conversations,
     list_recent_messages,
     save_message,
+    user_can_access_conversation,
 )
 from app.hub import hub
 from app.routes import get_conversations_with_last_message
@@ -25,6 +26,14 @@ from app.utils import message_payload
 from app.auth import get_ws_user
 
 router = APIRouter()
+
+
+def _is_ai_mentioned(content: str, ai_name: str | None) -> bool:
+    names = {settings.webchat_bot_name, "AI", "NekroAgent"}
+    if ai_name:
+        names.add(ai_name)
+    lowered = content.lower()
+    return any(f"@{name}".lower() in lowered for name in names if name)
 
 
 @router.websocket("/ws")
@@ -42,21 +51,16 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
             await websocket.close(code=4001, reason="未认证或令牌无效")
             return
 
-        # 1. 建立连接，并默认加入最近使用的第一个会话
+        # 1. 建立连接，并默认加入当前账号绑定的稳定 chatkey。
+        user_id = str(user.id)
+        user_name = user.display_name or user.username
         async with SessionLocal() as session:
-            from sqlalchemy import select
-            result = await session.execute(
-                select(Conversation)
-                .where(Conversation.user_id == str(user.id))
-                .order_by(Conversation.updated_at.desc())
-            )
-            conversations = result.scalars().all()
+            conversations = await list_user_conversations(user_id)
 
             if not conversations:
-                current = await create_conversation(
-                    channel_name="默认对话",
-                    user_id=str(user.id),
-                    user_name=user.display_name or user.username
+                current = await get_or_create_user_default_conversation(
+                    user_id=user_id,
+                    user_name=user_name,
                 )
                 await ensure_subscribed(current.channel_id)
             else:
@@ -68,7 +72,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
             await websocket.send_json({"type": "status", "connected": client.running})
 
             # 3. 推送最新的侧边栏会话列表
-            ws_items = await get_conversations_with_last_message(session, str(user.id))
+            ws_items = await get_conversations_with_last_message(session, user_id)
             await websocket.send_json({"type": "conversations", "items": ws_items})
 
         # 4. 推送当前会话的历史聊天记录
@@ -86,7 +90,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
             if action == "select":
                 channel_id = str(payload.get("channel_id", ""))
                 conversation = await get_conversation(channel_id)
-                if not conversation or conversation.user_id != str(user.id):
+                if not conversation or not await user_can_access_conversation(channel_id, user_id):
                     await websocket.send_json({"type": "error", "message": "会话不存在或无权访问"})
                     continue
                 current = conversation
@@ -112,8 +116,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
                 continue
 
             conversation = await get_conversation(str(payload.get("channel_id") or current.channel_id))
-            if not conversation:
-                await websocket.send_json({"type": "error", "message": "会话不存在"})
+            if not conversation or not await user_can_access_conversation(conversation.channel_id, user_id):
+                await websocket.send_json({"type": "error", "message": "会话不存在或无权访问"})
                 continue
             current = conversation
             
@@ -126,8 +130,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
                 channel_id=conversation.channel_id,
                 role="user",
                 message_id=message_id,
-                sender_id=conversation.user_id or settings.webchat_user_id,
-                sender_name=conversation.user_name or settings.webchat_user_name,
+                sender_id=user_id,
+                sender_name=user_name,
                 content=content,
                 file_url=str(file_info.get("file_url", "")) if file_info else "",
                 file_name=str(file_info.get("file_name", "")) if file_info else "",
@@ -138,8 +142,12 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
             # 广播给当前会话下的其它前端客户端（例如多开网页同步）
             await hub.broadcast(conversation.channel_id, message_payload(saved, conversation))
 
+            ai_mentioned = _is_ai_mentioned(content, conversation.ai_name)
+
             # 拼装为 NekroAgent SDK 认可的消息段
             segments: list[MessageSegmentUnion] = []
+            if conversation.kind == "group" and ai_mentioned:
+                segments.append(at("webchat_bot", conversation.ai_name or settings.webchat_bot_name))
             if content:
                 segments.append(text(content))
             if file_info:
@@ -156,10 +164,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
                 conversation.channel_id,
                 ReceiveMessage(
                     msg_id=message_id,
-                    from_id=conversation.user_id or settings.webchat_user_id,
-                    from_name=conversation.user_name or settings.webchat_user_name,
-                    from_nickname=conversation.user_name or settings.webchat_user_name,
-                    is_to_me=True,
+                    from_id=user_id,
+                    from_name=user_name,
+                    from_nickname=user_name,
+                    is_to_me=(conversation.kind != "group") or ai_mentioned,
                     is_self=False,
                     raw_content=content,
                     channel_id=conversation.channel_id,
@@ -174,4 +182,3 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
     except WebSocketDisconnect:
         # 前端连接意外断开或刷新，安全移除
         await hub.disconnect(websocket)
-

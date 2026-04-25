@@ -148,6 +148,19 @@ textarea {
   box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
 }
 
+.new-chat.secondary {
+  margin-top: -12px;
+  background: white;
+  color: var(--primary);
+  border: 1px solid rgba(224, 82, 82, 0.22);
+  box-shadow: none;
+}
+
+.new-chat.secondary:hover {
+  background: var(--primary-light);
+  box-shadow: none;
+}
+
 .chat-list {
   flex: 1;
   overflow-y: auto;
@@ -249,6 +262,12 @@ textarea {
   color: #991b1b;
 }
 
+.toast.success {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: #ecfdf5;
+  color: #065f46;
+}
+
 .chat-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--border-color);
@@ -329,7 +348,6 @@ textarea {
 }
 
 .save-button {
-  grid-column: span 2;
   background: var(--primary);
   color: white;
   padding: 10px;
@@ -341,6 +359,21 @@ textarea {
 
 .save-button:hover {
   background: var(--primary-hover);
+}
+
+.invite-button {
+  background: var(--primary-light);
+  color: var(--primary);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.invite-button:hover {
+  background: var(--primary);
+  color: white;
 }
 
 /* Messages */
@@ -416,6 +449,19 @@ textarea {
   background: var(--ai-bubble);
   color: var(--ai-text);
   border-bottom-left-radius: 4px;
+}
+
+.bubble-row.other-user .bubble {
+  background: var(--ai-bubble);
+  color: var(--ai-text);
+  border-bottom-left-radius: 4px;
+}
+
+.sender-name {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .bubble-row.system .bubble {

@@ -40,6 +40,7 @@ export default function App({ currentUser, onLogout }) {
   const conversationsRefreshTimerRef = useRef(null)
 
   const activeConv = conversations.find(c => c.channel_id === activeChannelId)
+  const isGroupChat = activeConv?.kind === 'group'
 
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId
@@ -51,6 +52,7 @@ export default function App({ currentUser, onLogout }) {
   useEffect(() => {
     isComponentMounted.current = true
     fetchConversations()
+    joinFromInviteUrl()
     connectWebSocket()
     return () => {
       isComponentMounted.current = false
@@ -94,6 +96,13 @@ export default function App({ currentUser, onLogout }) {
     setNotice({ message, level })
     window.clearTimeout(noticeTimerRef.current)
     noticeTimerRef.current = window.setTimeout(() => setNotice(null), 5000)
+  }
+
+  const isAiMentioned = (content) => {
+    if (!isGroupChat) return true
+    const names = new Set(['AI', 'NekroAgent'])
+    if (activeConv?.ai_name) names.add(activeConv.ai_name)
+    return Array.from(names).some(name => content.toLowerCase().includes(`@${name}`.toLowerCase()))
   }
 
   const handleScroll = async (e) => {
@@ -143,6 +152,28 @@ export default function App({ currentUser, onLogout }) {
     }
   }
 
+  const joinFromInviteUrl = async () => {
+    const match = window.location.pathname.match(/^\/invite\/([^/]+)$/)
+    if (!match) return
+    const inviteKey = decodeURIComponent(match[1])
+    try {
+      const res = await authFetch(`/api/invite/${encodeURIComponent(inviteKey)}/join`, { method: 'POST' })
+      const item = await res.json()
+      if (!res.ok) throw new Error(item.detail || '加入群聊失败')
+      setConversations(prev => {
+        if (prev.some(conv => conv.channel_id === item.channel_id)) {
+          return prev.map(conv => conv.channel_id === item.channel_id ? item : conv)
+        }
+        return [item, ...prev]
+      })
+      selectConversation(item.channel_id)
+      showNotice(`已加入「${item.channel_name}」`, 'success')
+      window.history.replaceState({}, '', '/')
+    } catch (err) {
+      showNotice(err.message || '加入群聊失败', 'error')
+    }
+  }
+
   const scheduleFetchConversations = () => {
     window.clearTimeout(conversationsRefreshTimerRef.current)
     conversationsRefreshTimerRef.current = window.setTimeout(() => {
@@ -165,6 +196,9 @@ export default function App({ currentUser, onLogout }) {
         return
       }
       setStatus({ text: '已连接', ok: true })
+      if (activeChannelIdRef.current) {
+        ws.send(JSON.stringify({ action: 'select', channel_id: activeChannelIdRef.current }))
+      }
     }
 
     ws.onclose = () => {
@@ -190,6 +224,9 @@ export default function App({ currentUser, onLogout }) {
         }
         scheduleFetchConversations()
       } else if (payload.type === 'history') {
+        if (activeChannelIdRef.current && payload.channel_id && activeChannelIdRef.current !== payload.channel_id) {
+          return
+        }
         if (payload.channel_id) setActiveChannelId(payload.channel_id)
         setMessages(payload.items || [])
         setIsWaiting(false)
@@ -215,6 +252,7 @@ export default function App({ currentUser, onLogout }) {
   }
 
   const selectConversation = (channelId) => {
+    activeChannelIdRef.current = channelId
     setActiveChannelId(channelId)
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ action: 'select', channel_id: channelId }))
@@ -234,7 +272,42 @@ export default function App({ currentUser, onLogout }) {
       setConversations(prev => [item, ...prev])
       selectConversation(item.channel_id)
     } catch (err) {
+      showNotice(err.message || '创建对话失败', 'error')
       console.error('创建对话失败:', err)
+    }
+  }
+
+  const createGroupChat = async () => {
+    const name = prompt('群聊名称', '新群聊')
+    if (name === null) return
+    try {
+      const res = await authFetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel_name: name }),
+      })
+      const item = await res.json()
+      if (!res.ok) throw new Error(item.detail || '创建群聊失败')
+      setConversations(prev => [item, ...prev])
+      selectConversation(item.channel_id)
+      showNotice(`已创建群聊「${item.channel_name}」`, 'success')
+    } catch (err) {
+      showNotice(err.message || '创建群聊失败', 'error')
+      console.error('创建群聊失败:', err)
+    }
+  }
+
+  const copyInviteLink = async () => {
+    if (!activeChannelId) return
+    try {
+      const res = await authFetch(`/api/conversations/${activeChannelId}/invite`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || '获取邀请链接失败')
+      const inviteUrl = `${window.location.origin}${data.invite_path}`
+      await navigator.clipboard.writeText(inviteUrl)
+      showNotice('群聊邀请链接已复制', 'success')
+    } catch (err) {
+      showNotice(err.message || '复制群聊邀请链接失败', 'error')
     }
   }
 
@@ -295,7 +368,8 @@ export default function App({ currentUser, onLogout }) {
     if ((!content && !pendingFile) || socketRef.current?.readyState !== WebSocket.OPEN || !activeChannelId) return
 
     try {
-      setIsWaiting(true)
+      const shouldWaitForAi = isAiMentioned(content)
+      setIsWaiting(shouldWaitForAi)
       let fileInfo = null
       if (pendingFile) {
         fileInfo = await uploadFile(pendingFile)
@@ -397,6 +471,9 @@ export default function App({ currentUser, onLogout }) {
         <button className="new-chat" type="button" onClick={createNewChat}>
           <span className="plus-icon">＋</span> 新建对话
         </button>
+        <button className="new-chat secondary" type="button" onClick={createGroupChat}>
+          <span className="plus-icon">＋</span> 创建群聊
+        </button>
         
         <div className="chat-list">
           {conversations.map(item => (
@@ -443,14 +520,14 @@ export default function App({ currentUser, onLogout }) {
             type="button" 
             onClick={() => setShowProfile(!showProfile)}
           >
-            资料设置
+            {isGroupChat ? '群聊设置' : '对话设置'}
           </button>
         </header>
 
         {showProfile && (
           <section className="profile-panel">
             <div className="form-group">
-              <label>对话名称</label>
+              <label>{isGroupChat ? '群聊名称' : '对话名称'}</label>
               <input 
                 value={profileData.channel_name} 
                 onChange={e => setProfileData(prev => ({ ...prev, channel_name: e.target.value }))} 
@@ -499,25 +576,36 @@ export default function App({ currentUser, onLogout }) {
             <button className="save-button" type="button" onClick={saveProfileSettings}>
               保存设置
             </button>
+            {isGroupChat && (
+              <button className="invite-button" type="button" onClick={copyInviteLink}>
+                复制群聊邀请链接
+              </button>
+            )}
           </section>
         )}
 
         <div className="messages" onScroll={handleScroll}>
           {messages.map((msg, index) => {
-            const isUser = msg.role === 'user'
+            const isOwn = msg.role === 'user' && String(msg.sender_id) === String(currentUser?.id)
+            const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
             const isSystem = msg.role === 'system'
-            const avatarUrl = isUser ? (activeConv?.user_avatar || '/static/user.png') : (activeConv?.ai_avatar || '/static/ai.png')
+            const avatarUrl = isOwn
+              ? (currentUser?.avatar || activeConv?.user_avatar || '/static/user.png')
+              : (msg.role === 'user' ? '/static/user.png' : (activeConv?.ai_avatar || '/static/ai.png'))
             const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') && 
               (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
             
             return (
-              <div key={index} className={`bubble-row ${msg.role}`}>
+              <div key={index} className={`bubble-row ${rowRole}`}>
                 {!isSystem && (
                   <div className="msg-avatar">
                     <img src={avatarUrl} alt={msg.sender_name} />
                   </div>
                 )}
                 <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''}`}>
+                  {!isOwn && !isSystem && msg.role === 'user' && (
+                    <div className="sender-name">{msg.sender_name || '用户'}</div>
+                  )}
                   {msg.content && (!msg.file_url || (
                     msg.content.trim() !== `[文件] ${msg.file_name}` && 
                     msg.content.trim() !== `[文件]${msg.file_name}` &&

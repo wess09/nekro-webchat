@@ -46,10 +46,10 @@ npm run dev
 
 ## 基础配置索引
 
-### 默认通信路由 Key
-系统预置生成的网关路由匹配管道标识为：
+### 账号绑定 ChatKey
+系统不再使用全局 `webchat_main`。每个登录账号会自动生成并绑定自己的稳定网关路由：
 ```text
-sse-webchat-webchat_main
+sse-webchat-webchat_user_<账号ID>
 ```
 
 ### 归档存储快照

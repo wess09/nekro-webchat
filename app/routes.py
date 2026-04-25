@@ -14,14 +14,19 @@ from app.database import (
     SessionLocal,
     conversation_to_dict,
     create_conversation,
+    ensure_conversation_invite_key,
     get_conversation,
+    get_or_create_user_default_conversation,
+    join_conversation_by_invite_key,
     list_recent_messages,
+    list_user_conversations,
     update_conversation_profile,
+    user_can_access_conversation,
 )
 from app.sse_client import client, ensure_subscribed
 from app.utils import cleanup_uploaded_files, get_upload_path, message_payload
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
 router = APIRouter()
@@ -63,16 +68,9 @@ async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any
 
 async def get_conversations_with_last_message(session, user_id: str) -> list[dict[str, Any]]:
     """
-    按更新时间倒序获取指定用户的会话列表。
+    按更新时间倒序获取当前账号绑定的 chatkey 列表。
     """
-    from sqlalchemy import select
-
-    res = await session.execute(
-        select(Conversation)
-        .where(Conversation.user_id == user_id)
-        .order_by(Conversation.updated_at.desc())
-    )
-    convs = res.scalars().all()
+    convs = await list_user_conversations(user_id)
     return [await pack_single_conversation(session, c) for c in convs]
 
 
@@ -83,6 +81,12 @@ async def get_conversations_with_last_message(session, user_id: str) -> list[dic
 @router.get("/")
 async def index() -> FileResponse:
     """提供单页面应用的首页 HTML 载入。"""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@router.get("/invite/{invite_key}")
+async def invite_page(invite_key: str) -> FileResponse:
+    """邀请链接入口，实际加入逻辑由登录后的前端调用 API 完成。"""
     return FileResponse(STATIC_DIR / "index.html")
 
 
@@ -103,15 +107,16 @@ async def status() -> dict[str, Any]:
 @router.get("/api/conversations")
 async def api_conversations(_user: User = Depends(get_current_user)) -> dict[str, Any]:
     """获取完整的会话历史列表，带最新一条消息预览。"""
+    user_id = str(_user.id)
+    user_name = _user.display_name or _user.username
     async with SessionLocal() as session:
-        items = await get_conversations_with_last_message(session, str(_user.id))
+        items = await get_conversations_with_last_message(session, user_id)
         
-        # 如果当前用户没有任何对话，则自动帮他创建一个默认对话
+        # 每个账号有一个稳定且强绑定的默认 chatkey。
         if not items:
-            conversation = await create_conversation(
-                channel_name="默认对话",
-                user_id=str(_user.id),
-                user_name=_user.display_name or _user.username
+            conversation = await get_or_create_user_default_conversation(
+                user_id=user_id,
+                user_name=user_name,
             )
             await ensure_subscribed(conversation.channel_id)
             items = [await pack_single_conversation(session, conversation)]
@@ -121,13 +126,30 @@ async def api_conversations(_user: User = Depends(get_current_user)) -> dict[str
 
 @router.post("/api/conversations")
 async def api_create_conversation(payload: dict[str, str], _user: User = Depends(get_current_user)) -> dict[str, Any]:
-    """用户在前端主动发起一个新的聊天频道。"""
+    """用户在前端主动创建一个新的 AI 对话。"""
+    user_id = str(_user.id)
     conversation = await create_conversation(
         payload.get("channel_name", "新对话"),
-        user_id=str(_user.id),
-        user_name=_user.display_name or _user.username
+        user_id=user_id,
+        user_name=_user.display_name or _user.username,
+        kind="direct",
     )
     # 在 SSE 客户端向 NekroAgent 监听此频道
+    await ensure_subscribed(conversation.channel_id)
+    async with SessionLocal() as session:
+        return await pack_single_conversation(session, conversation)
+
+
+@router.post("/api/groups")
+async def api_create_group(payload: dict[str, str], _user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """创建一个群聊频道，可通过邀请链接让其他账号加入。"""
+    user_id = str(_user.id)
+    conversation = await create_conversation(
+        payload.get("channel_name", "新群聊"),
+        user_id=user_id,
+        user_name=_user.display_name or _user.username,
+        kind="group",
+    )
     await ensure_subscribed(conversation.channel_id)
     async with SessionLocal() as session:
         return await pack_single_conversation(session, conversation)
@@ -149,11 +171,45 @@ async def api_update_conversation(channel_id: str, payload: dict[str, str], _use
 async def api_messages(channel_id: str, before_id: int | None = None, limit: int = 50, _user: User = Depends(get_current_user)) -> dict[str, Any]:
     """获取指定会话的历史聊天记录（支持分页）。"""
     conversation = await get_conversation(channel_id)
-    if not conversation or conversation.user_id != str(_user.id):
+    if not conversation or not await user_can_access_conversation(channel_id, str(_user.id)):
         raise HTTPException(status_code=403, detail="会话不存在或无权访问")
         
     rows = await list_recent_messages(channel_id, before_id=before_id, limit=limit)
     return {"items": [message_payload(row, conversation) for row in rows]}
+
+
+@router.get("/api/conversations/{channel_id}/invite")
+async def api_conversation_invite(channel_id: str, _user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """获取当前账号可访问群聊的邀请信息。"""
+    conversation = await get_conversation(channel_id)
+    if not conversation or not await user_can_access_conversation(channel_id, str(_user.id)):
+        raise HTTPException(status_code=403, detail="会话不存在或无权访问")
+    if conversation.kind != "group":
+        raise HTTPException(status_code=400, detail="只有群聊可以生成邀请链接")
+
+    conversation = await ensure_conversation_invite_key(channel_id)
+    assert conversation is not None
+    return {
+        "channel_id": conversation.channel_id,
+        "invite_key": conversation.invite_key,
+        "invite_path": f"/invite/{conversation.invite_key}",
+    }
+
+
+@router.post("/api/invite/{invite_key}/join")
+async def api_join_invite(invite_key: str, _user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """通过邀请 key 加入群聊。"""
+    conversation = await join_conversation_by_invite_key(
+        invite_key=invite_key,
+        user_id=str(_user.id),
+        user_name=_user.display_name or _user.username,
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="邀请链接无效或已过期")
+
+    await ensure_subscribed(conversation.channel_id)
+    async with SessionLocal() as session:
+        return await pack_single_conversation(session, conversation)
 
 
 @router.post("/api/upload")
@@ -191,4 +247,3 @@ async def api_upload(
         "file_size": target.stat().st_size,
         "file_path": str(target),
     }
-

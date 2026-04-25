@@ -258,6 +258,36 @@ class WebChatSSEClient(SSEClient):
         """
         回调：当 AI 代理向服务端查询当前平台中某个用户的信息时触发。
         """
+        if data.user_id == "webchat_bot":
+            return UserInfo(
+                user_id="webchat_bot",
+                user_name=settings.webchat_bot_name,
+                user_avatar=None,
+                user_nickname=settings.webchat_bot_name,
+                platform_name=settings.webchat_platform,
+            )
+
+        try:
+            from sqlalchemy import select
+
+            from app.auth import User
+            from app.database import SessionLocal
+
+            async with SessionLocal() as session:
+                result = await session.execute(select(User).where(User.id == int(data.user_id)))
+                user = result.scalar_one_or_none()
+            if user:
+                display_name = user.display_name or user.username
+                return UserInfo(
+                    user_id=str(user.id),
+                    user_name=display_name,
+                    user_avatar=user.avatar or None,
+                    user_nickname=display_name,
+                    platform_name=settings.webchat_platform,
+                )
+        except (ValueError, TypeError):
+            pass
+
         conversations = await list_conversations()
         conversation = conversations[0] if conversations else None
         return UserInfo(
@@ -277,11 +307,23 @@ class WebChatSSEClient(SSEClient):
         回调：当 AI 代理查询聊天群组/频道的信息时触发。
         """
         conversation = await get_conversation(data.channel_id)
+        member_count = 1
+        try:
+            from sqlalchemy import func, select
+
+            from app.auth import User
+            from app.database import SessionLocal
+
+            async with SessionLocal() as session:
+                result = await session.execute(select(func.count(User.id)))
+                member_count = int(result.scalar_one() or 1)
+        except Exception:
+            pass
         return ChannelInfo(
             channel_id=data.channel_id,
             channel_name=conversation.channel_name if conversation else data.channel_id,
             channel_avatar=None,
-            member_count=1,
+            member_count=member_count,
             owner_id=(conversation.user_id if conversation else settings.webchat_user_id),
             is_admin=True,
         )
