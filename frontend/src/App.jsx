@@ -182,12 +182,21 @@ export default function App({ currentUser, onLogout }) {
   }
 
   const connectWebSocket = () => {
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const host = window.location.host
+    const apiURL = import.meta.env.VITE_API_URL || ''
+    let wsUrl = ''
     const token = getToken()
-    const wsUrl = `${protocol}://${host}/ws?token=${encodeURIComponent(token)}`
-    
+
+    if (apiURL) {
+      const parsedUrl = new URL(apiURL)
+      const wsProtocol = parsedUrl.protocol === 'https:' ? 'wss' : 'ws'
+      wsUrl = `${wsProtocol}://${parsedUrl.host}/ws?token=${encodeURIComponent(token)}`
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+      wsUrl = `${protocol}://${window.location.host}/ws?token=${encodeURIComponent(token)}`
+    }
+
     const ws = new WebSocket(wsUrl)
+
     socketRef.current = ws
 
     ws.onopen = () => {
