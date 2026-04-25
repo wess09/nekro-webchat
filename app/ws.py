@@ -3,14 +3,16 @@ from __future__ import annotations
 import time
 import uuid
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from nekro_agent_sse_sdk import ReceiveMessage
 from nekro_agent_sse_sdk import file as sdk_file, image, text
 from nekro_agent_sse_sdk.models import MessageSegmentUnion
 
 from app.config import settings
 from app.database import (
+    Conversation,
     SessionLocal,
+    create_conversation,
     get_conversation,
     list_conversations,
     list_recent_messages,
@@ -20,28 +22,53 @@ from app.hub import hub
 from app.routes import get_conversations_with_last_message
 from app.sse_client import client, ensure_subscribed
 from app.utils import message_payload
+from app.auth import get_ws_user
 
 router = APIRouter()
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(default="")) -> None:
     """
     前端页面与后端进行全双工通信的核心 WebSocket 路由。
     处理：客户端连接初始化、接收用户发出的消息、下发历史记录等。
+    需要通过 ?token=xxx 查询参数传递 JWT 令牌进行认证。
     """
     try:
-        # 1. 建立连接，并默认加入最近使用的第一个会话
-        conversations = await list_conversations()
-        current = conversations[0]
-        await hub.connect(websocket, current.channel_id)
-        
-        # 2. 推送当前与 NekroAgent 平台的连接健康状态
-        await websocket.send_json({"type": "status", "connected": client.running})
+        # 0. 验证用户身份
+        user = await get_ws_user(token)
+        if not user:
+            await websocket.accept()
+            await websocket.close(code=4001, reason="未认证或令牌无效")
+            return
 
-        # 3. 推送最新的侧边栏会话列表
+        # 1. 建立连接，并默认加入最近使用的第一个会话
         async with SessionLocal() as session:
-            ws_items = await get_conversations_with_last_message(session)
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Conversation)
+                .where(Conversation.user_id == str(user.id))
+                .order_by(Conversation.updated_at.desc())
+            )
+            conversations = result.scalars().all()
+
+            if not conversations:
+                current = await create_conversation(
+                    channel_name="默认对话",
+                    user_id=str(user.id),
+                    user_name=user.display_name or user.username
+                )
+                await ensure_subscribed(current.channel_id)
+            else:
+                current = conversations[0]
+
+            await hub.connect(websocket, current.channel_id)
+            
+            # 2. 推送当前与 NekroAgent 平台的连接健康状态
+            await websocket.send_json({"type": "status", "connected": client.running})
+
+            # 3. 推送最新的侧边栏会话列表
+            ws_items = await get_conversations_with_last_message(session, str(user.id))
             await websocket.send_json({"type": "conversations", "items": ws_items})
 
         # 4. 推送当前会话的历史聊天记录
@@ -59,8 +86,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if action == "select":
                 channel_id = str(payload.get("channel_id", ""))
                 conversation = await get_conversation(channel_id)
-                if not conversation:
-                    await websocket.send_json({"type": "error", "message": "会话不存在"})
+                if not conversation or conversation.user_id != str(user.id):
+                    await websocket.send_json({"type": "error", "message": "会话不存在或无权访问"})
                     continue
                 current = conversation
                 

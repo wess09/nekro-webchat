@@ -96,3 +96,56 @@ def segment_text(segments: list[MessageSegmentUnion]) -> str:
             parts.append(f"@{getattr(segment, 'nickname', '') or getattr(segment, 'user_id', '')}")
     return "\n".join(part for part in parts if part).strip()
 
+
+def cleanup_uploaded_files() -> None:
+    """
+    根据配置，清理服务器上超时的、或超出总容量限制的上传文件。
+    """
+    from datetime import datetime, timedelta
+    import os
+
+    # 1. 按照时间清理
+    if settings.cleanup_max_file_age_days > 0:
+        cutoff_time = datetime.now() - timedelta(days=settings.cleanup_max_file_age_days)
+        for root, dirs, files in os.walk(UPLOAD_DIR):
+            for f in files:
+                f_path = Path(root) / f
+                try:
+                    if datetime.fromtimestamp(f_path.stat().st_mtime) < cutoff_time:
+                        f_path.unlink()
+                except OSError:
+                    pass
+
+    # 2. 按照总大小清理 (保留最近的文件，删除最旧的文件)
+    if settings.cleanup_max_total_size_mb > 0:
+        max_total_bytes = settings.cleanup_max_total_size_mb * 1024 * 1024
+        
+        # 收集所有的文件及其最后修改时间
+        all_files = []
+        total_size = 0
+        for root, dirs, files in os.walk(UPLOAD_DIR):
+            for f in files:
+                f_path = Path(root) / f
+                try:
+                    stat_res = f_path.stat()
+                    all_files.append({
+                        "path": f_path,
+                        "mtime": stat_res.st_mtime,
+                        "size": stat_res.st_size
+                    })
+                    total_size += stat_res.st_size
+                except OSError:
+                    pass
+                
+        # 如果超出总大小，按修改时间排序（从旧到新），依次删除直到满足大小
+        if total_size > max_total_bytes:
+            all_files.sort(key=lambda x: x["mtime"])
+            for item in all_files:
+                if total_size <= max_total_bytes:
+                    break
+                try:
+                    item["path"].unlink()
+                    total_size -= item["size"]
+                except OSError:
+                    pass
+

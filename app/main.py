@@ -9,6 +9,7 @@ from app.database import init_db, list_conversations
 from app.sse_client import client, ensure_subscribed
 from app.routes import router as http_router
 from app.ws import router as ws_router
+from app.auth import router as auth_router
 from app.utils import UPLOAD_DIR
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,6 +24,7 @@ app.mount(
 )
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+app.include_router(auth_router)
 app.include_router(http_router)
 app.include_router(ws_router)
 

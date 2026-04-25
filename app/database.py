@@ -139,14 +139,19 @@ async def get_or_create_conversation(
     return conversation
 
 
-async def create_conversation(channel_name: str) -> Conversation:
+async def create_conversation(channel_name: str, user_id: str | None = None, user_name: str | None = None) -> Conversation:
     channel_id = f"webchat_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     async with SessionLocal() as session:
-        conversation = await get_or_create_conversation(
-            session,
+        conversation = Conversation(
             channel_id=channel_id,
             channel_name=channel_name.strip() or "新对话",
+            user_id=user_id if user_id else settings.webchat_user_id,
+            user_name=user_name if user_name else settings.webchat_user_name,
+            user_avatar="",
+            ai_name=settings.webchat_bot_name,
+            ai_avatar="",
         )
+        session.add(conversation)
         await session.commit()
         await session.refresh(conversation)
         return conversation

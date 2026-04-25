@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye } from 'lucide-react'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { authFetch, getToken, clearAuth } from './auth'
 
-export default function App() {
+export default function App({ currentUser, onLogout }) {
   const [conversations, setConversations] = useState([])
   const [activeChannelId, setActiveChannelId] = useState('')
   const [status, setStatus] = useState({ text: '连接中', ok: false })
@@ -18,6 +19,7 @@ export default function App() {
   const [previewImage, setPreviewImage] = useState(null)
   const [previewFile, setPreviewFile] = useState(null)
   const [hasMore, setHasMore] = useState(true)
+  const [notice, setNotice] = useState(null)
   const lastMessageIdRef = useRef(null)
   const [profileData, setProfileData] = useState({
     channel_name: '',
@@ -34,6 +36,8 @@ export default function App() {
   const aiAvatarRef = useRef(null)
   const activeChannelIdRef = useRef('')
   const isComponentMounted = useRef(true)
+  const noticeTimerRef = useRef(null)
+  const conversationsRefreshTimerRef = useRef(null)
 
   const activeConv = conversations.find(c => c.channel_id === activeChannelId)
 
@@ -50,6 +54,8 @@ export default function App() {
     connectWebSocket()
     return () => {
       isComponentMounted.current = false
+      window.clearTimeout(noticeTimerRef.current)
+      window.clearTimeout(conversationsRefreshTimerRef.current)
       if (socketRef.current) socketRef.current.close()
     }
   }, [])
@@ -84,6 +90,12 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  const showNotice = (message, level = 'warning') => {
+    setNotice({ message, level })
+    window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 5000)
+  }
+
   const handleScroll = async (e) => {
     const { scrollTop } = e.currentTarget
     if (scrollTop === 0 && messages.length > 0 && hasMore) {
@@ -93,7 +105,7 @@ export default function App() {
       if (!oldestMsg || !oldestMsg.id) return
 
       try {
-        const res = await fetch(`/api/conversations/${activeChannelId}/messages?before_id=${oldestMsg.id}&limit=50`)
+        const res = await authFetch(`/api/conversations/${activeChannelId}/messages?before_id=${oldestMsg.id}&limit=50`)
         const data = await res.json()
         if (data.items && data.items.length > 0) {
           setMessages(prev => {
@@ -119,7 +131,7 @@ export default function App() {
 
   const fetchConversations = async () => {
     try {
-      const res = await fetch('/api/conversations')
+      const res = await authFetch('/api/conversations')
       const data = await res.json()
       const items = data.items || []
       setConversations(items)
@@ -131,10 +143,18 @@ export default function App() {
     }
   }
 
+  const scheduleFetchConversations = () => {
+    window.clearTimeout(conversationsRefreshTimerRef.current)
+    conversationsRefreshTimerRef.current = window.setTimeout(() => {
+      if (isComponentMounted.current) fetchConversations()
+    }, 250)
+  }
+
   const connectWebSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host
-    const wsUrl = `${protocol}://${host}/ws`
+    const token = getToken()
+    const wsUrl = `${protocol}://${host}/ws?token=${encodeURIComponent(token)}`
     
     const ws = new WebSocket(wsUrl)
     socketRef.current = ws
@@ -168,7 +188,7 @@ export default function App() {
             setIsWaiting(false)
           }
         }
-        fetchConversations()
+        scheduleFetchConversations()
       } else if (payload.type === 'history') {
         if (payload.channel_id) setActiveChannelId(payload.channel_id)
         setMessages(payload.items || [])
@@ -182,7 +202,13 @@ export default function App() {
       } else if (payload.type === 'status') {
         setStatus({ text: payload.connected ? '已连接' : '连接中', ok: payload.connected })
       } else if (payload.type === 'error') {
+        showNotice(payload.message || '操作失败', 'error')
         setMessages(prev => [...prev, { role: 'system', content: payload.message }])
+        setIsWaiting(false)
+      } else if (payload.type === 'notification') {
+        if (!payload.channel_id || payload.channel_id === activeChannelIdRef.current) {
+          showNotice(payload.message || '操作被系统拦截', payload.level || 'warning')
+        }
         setIsWaiting(false)
       }
     }
@@ -199,7 +225,7 @@ export default function App() {
     const name = prompt('对话名称', '新对话')
     if (name === null) return
     try {
-      const res = await fetch('/api/conversations', {
+      const res = await authFetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel_name: name }),
@@ -215,7 +241,7 @@ export default function App() {
   const saveProfileSettings = async () => {
     if (!activeChannelId) return
     try {
-      const res = await fetch(`/api/conversations/${activeChannelId}`, {
+      const res = await authFetch(`/api/conversations/${activeChannelId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profileData),
@@ -235,8 +261,15 @@ export default function App() {
   const uploadFile = async (file) => {
     const formData = new FormData()
     formData.append('file_data', file)
-    const res = await fetch('/api/upload', { method: 'POST', body: formData })
-    if (!res.ok) throw new Error('上传失败')
+    const res = await authFetch('/api/upload', { method: 'POST', body: formData })
+    if (!res.ok) {
+      let message = '上传失败'
+      try {
+        const data = await res.json()
+        message = data.detail || message
+      } catch (err) {}
+      throw new Error(message)
+    }
     return await res.json()
   }
 
@@ -251,6 +284,7 @@ export default function App() {
         setProfileData(prev => ({ ...prev, ai_avatar: data.file_url }))
       }
     } catch (err) {
+      showNotice(err.message || '上传头像失败', 'error')
       console.error('上传头像失败:', err)
     }
   }
@@ -279,6 +313,7 @@ export default function App() {
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (err) {
       setIsWaiting(false)
+      showNotice(err.message || '发送消息失败', 'error')
       console.error('发送消息失败:', err)
     }
   }
@@ -326,6 +361,14 @@ export default function App() {
   const handlePreviewFile = async (name, url) => {
     try {
       const res = await fetch(url)
+      if (!res.ok) {
+        if (res.status === 404) {
+          alert('文件已过期或被系统自动清理')
+        } else {
+          alert('无法加载文件内容')
+        }
+        return
+      }
       const content = await res.text()
       const ext = name.split('.').pop().toLowerCase()
       let type = 'text'
@@ -372,9 +415,24 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user-info">
+            <span className="sidebar-username">{currentUser?.display_name || currentUser?.username}</span>
+          </div>
+          <button className="logout-button" type="button" onClick={() => { clearAuth(); onLogout() }}>
+            <LogOut size={16} />
+            <span>退出</span>
+          </button>
+        </div>
       </aside>
 
       <section className="chat">
+        {notice && (
+          <div className={`toast ${notice.level || 'warning'}`} role="status">
+            {notice.message}
+          </div>
+        )}
         <header className="chat-header">
           <div>
             <h1>{activeConv?.channel_name || 'WebChat'}</h1>
@@ -477,7 +535,17 @@ export default function App() {
                           className="bubble-image" 
                           src={msg.file_url} 
                           alt={msg.file_name || 'image'} 
-                          onClick={() => setPreviewImage(msg.file_url)}
+                          onClick={(e) => {
+                            if (!e.target.classList.contains('expired')) {
+                              setPreviewImage(msg.file_url)
+                            }
+                          }}
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 100'%3E%3Crect width='300' height='100' fill='%23f5f5f5'/%3E%3Ctext x='150' y='50' font-family='sans-serif' font-size='14' fill='%23999' text-anchor='middle' alignment-baseline='middle'%3E图片已过期或被清理%3C/text%3E%3C/svg%3E";
+                            e.target.classList.add('expired');
+                            e.target.style.cursor = 'default';
+                          }}
                           style={{ cursor: 'zoom-in' }}
                         />
                       ) : (
@@ -491,7 +559,16 @@ export default function App() {
                             <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                           </div>
 
-                          <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                          <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const res = await fetch(msg.file_url, { method: 'HEAD' });
+                              if (!res.ok && res.status === 404) {
+                                e.preventDefault();
+                                alert('文件已过期或被系统自动清理');
+                              }
+                            } catch (err) {}
+                          }}>
                              <Download size={18} />
                           </a>
                         </div>
