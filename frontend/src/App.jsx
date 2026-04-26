@@ -49,6 +49,18 @@ export default function App({ currentUser: initialUser, onLogout }) {
   const activeConv = conversations.find(c => c.channel_id === activeChannelId)
   const isGroupChat = activeConv?.kind === 'group'
 
+  const getFullUrl = (url) => {
+    if (!url) return ''
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url
+    const apiURL = import.meta.env.VITE_API_URL || ''
+    if (apiURL) {
+      const base = apiURL.endsWith('/') ? apiURL.slice(0, -1) : apiURL
+      const path = url.startsWith('/') ? url : `/${url}`
+      return `${base}${path}`
+    }
+    return url
+  }
+
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId
     setIsWaiting(false) // 切换对话时重置等待状态
@@ -619,7 +631,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
         <div className="profile user-profile-top">
           <div className="user-avatar-wrapper" onClick={openUserSettings} title="点击修改个人信息">
             <div className="avatar">
-              <img src={currentUser?.avatar || '/static/user.png'} alt="User Avatar" />
+              <img src={getFullUrl(currentUser?.avatar) || '/static/user.png'} alt="User Avatar" />
             </div>
             <div className="user-info-card">
               <div className="card-header">个人资料</div>
@@ -654,7 +666,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               onClick={() => selectConversation(item.channel_id)}
             >
               <div className="chat-avatar">
-                <img src={item.ai_avatar || '/static/ai.png'} alt={item.ai_name} />
+                <img src={getFullUrl(item.ai_avatar) || '/static/ai.png'} alt={item.ai_name} />
               </div>
               <div className="chat-meta">
                 <span className="chat-title">{item.channel_name}</span>
@@ -720,7 +732,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                       {groupMembers.slice(0, 13).map(m => (
                         <div key={m.user_id} className="member-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', position: 'relative' }}>
                           <div className="member-avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)', position: 'relative' }}>
-                            <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={getFullUrl(m.avatar) || '/static/user.png'} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             {isRemoving && !m.is_owner && (
                               <button 
                                 className="remove-member-badge" 
@@ -844,10 +856,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
                 const isSystem = msg.role === 'system'
                 const avatarUrl = isOwn
-                  ? (currentUser?.avatar || '/static/user.png')
+                  ? (getFullUrl(currentUser?.avatar) || '/static/user.png')
                   : (msg.role === 'user'
-                    ? (msg.sender_avatar || '/static/user.png')
-                    : (activeConv?.ai_avatar || currentUser?.ai_avatar || '/static/ai.png'))
+                    ? (getFullUrl(msg.sender_avatar) || '/static/user.png')
+                    : (getFullUrl(activeConv?.ai_avatar) || getFullUrl(currentUser?.ai_avatar) || '/static/ai.png'))
                 const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
                   (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
 
@@ -877,11 +889,11 @@ export default function App({ currentUser: initialUser, onLogout }) {
                           {(msg.mime_type || '').startsWith('image/') ? (
                             <img
                               className="bubble-image"
-                              src={msg.file_url}
+                              src={getFullUrl(msg.file_url)}
                               alt={msg.file_name || 'image'}
                               onClick={(e) => {
                                 if (!e.target.classList.contains('expired')) {
-                                  setPreviewImage(msg.file_url)
+                                  setPreviewImage(getFullUrl(msg.file_url))
                                 }
                               }}
                               onError={(e) => {
@@ -895,7 +907,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                           ) : (
                             <div
                               className={`file-attachment-card ${isTextFile(msg.file_name) ? 'clickable' : ''}`}
-                              onClick={() => isTextFile(msg.file_name) && handlePreviewFile(msg.file_name, msg.file_url)}
+                              onClick={() => isTextFile(msg.file_name) && handlePreviewFile(msg.file_name, getFullUrl(msg.file_url))}
                             >
                               <div className={`file-icon ${getFileClass(msg.file_name)}`}>{getFileIcon(msg.file_name)}</div>
                               <div className="file-meta">
@@ -903,10 +915,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                                 <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                               </div>
 
-                              <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
+                              <a className="file-download-btn" href={getFullUrl(msg.file_url)} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  const res = await fetch(msg.file_url, { method: 'HEAD' });
+                                  const res = await fetch(getFullUrl(msg.file_url), { method: 'HEAD' });
                                   if (!res.ok && res.status === 404) {
                                     e.preventDefault();
                                     alert('文件已过期或被系统自动清理');
@@ -1011,7 +1023,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 <label>用户头像</label>
                 <div className="avatar-upload-row">
                   <div className="avatar-preview">
-                    <img src={userProfileData.avatar || '/static/user.png'} alt="用户头像" />
+                    <img src={getFullUrl(userProfileData.avatar) || '/static/user.png'} alt="用户头像" />
                   </div>
                   <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('user')}>
                     <UploadCloud size={16} /> 上传头像
@@ -1031,7 +1043,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 <label>AI 头像</label>
                 <div className="avatar-upload-row">
                   <div className="avatar-preview">
-                    <img src={userProfileData.ai_avatar || '/static/ai.png'} alt="AI头像" />
+                    <img src={getFullUrl(userProfileData.ai_avatar) || '/static/ai.png'} alt="AI头像" />
                   </div>
                   <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('ai')}>
                     <UploadCloud size={16} /> 上传头像
@@ -1058,7 +1070,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               {groupMembers.map(m => (
                 <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <img src={getFullUrl(m.avatar) || '/static/user.png'} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
                       <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{m.display_name}</span>
                       {m.is_owner && <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#eff6ff', color: '#3b82f6' }}>群主</span>}
