@@ -154,7 +154,9 @@ export default function App({ currentUser, onLogout }) {
   }
 
   const joinFromInviteUrl = async () => {
-    const match = window.location.pathname.match(/^\/invite\/([^/]+)$/)
+    const hashMatch = window.location.hash.match(/^#\/invite\/([^/]+)$/)
+    const pathMatch = window.location.pathname.match(/^\/invite\/([^/]+)$/)
+    const match = hashMatch || pathMatch
     if (!match) return
     const inviteKey = decodeURIComponent(match[1])
     try {
@@ -169,7 +171,7 @@ export default function App({ currentUser, onLogout }) {
       })
       selectConversation(item.channel_id)
       showNotice(`已加入「${item.channel_name}」`, 'success')
-      window.history.replaceState({}, '', '/')
+      window.history.replaceState({}, '', window.location.pathname)
     } catch (err) {
       showNotice(err.message || '加入群聊失败', 'error')
     }
@@ -305,7 +307,7 @@ export default function App({ currentUser, onLogout }) {
       const res = await authFetch(`/api/conversations/${activeChannelId}/invite`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '获取邀请链接失败')
-      const inviteUrl = `${window.location.origin}${data.invite_path}`
+      const inviteUrl = `${window.location.origin}/#${data.invite_path}`
       await navigator.clipboard.writeText(inviteUrl)
       showNotice('群聊邀请链接已复制', 'success')
     } catch (err) {
