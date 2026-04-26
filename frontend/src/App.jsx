@@ -26,6 +26,17 @@ function getStickerContent(name) {
   return `[表情包] ${name}`
 }
 
+function resolveBackendAssetUrl(url) {
+  if (!url) return url
+  if (/^(https?:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url
+  }
+  if (url.startsWith('/api/') || url.startsWith('/data/') || url.startsWith('/uploads/')) {
+    return withApiBase(url)
+  }
+  return url
+}
+
 const markdownSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames || []), 'svg', 'path', 'g', 'circle', 'ellipse', 'line', 'marker', 'polygon', 'polyline', 'rect', 'text', 'tspan', 'defs', 'foreignObject', 'style', 'br', 'math', 'semantics', 'mrow', 'mi', 'mn', 'mo', 'msup', 'msub', 'mfrac', 'msqrt', 'mspace', 'annotation'],
@@ -828,7 +839,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
         <div className="profile user-profile-top">
           <div className="user-avatar-wrapper" onClick={openUserSettings} title="点击修改个人信息">
             <div className="avatar">
-              <img src={currentUser?.avatar || userAvatar} alt="User Avatar" />
+              <img src={resolveBackendAssetUrl(currentUser?.avatar) || userAvatar} alt="User Avatar" />
             </div>
             <div className="user-info-card">
               <div className="card-header">个人资料</div>
@@ -863,7 +874,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               onClick={() => selectConversation(item.channel_id)}
             >
               <div className="chat-avatar">
-                <img src={item.ai_avatar || aiAvatar} alt={item.ai_name} />
+                <img src={resolveBackendAssetUrl(item.ai_avatar) || aiAvatar} alt={item.ai_name} />
               </div>
               <div className="chat-meta">
                 <span className="chat-title">{item.channel_name}</span>
@@ -929,7 +940,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                       {groupMembers.slice(0, 13).map(m => (
                         <div key={m.user_id} className="member-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', position: 'relative' }}>
                           <div className="member-avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)', position: 'relative' }}>
-                            <img src={m.avatar || userAvatar} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={resolveBackendAssetUrl(m.avatar) || userAvatar} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             {isRemoving && !m.is_owner && (
                               <button
                                 className="remove-member-badge"
@@ -1053,10 +1064,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
                 const isSystem = msg.role === 'system'
                 const avatarUrl = isOwn
-                  ? (currentUser?.avatar || userAvatar)
+                  ? (resolveBackendAssetUrl(currentUser?.avatar) || userAvatar)
                   : (msg.role === 'user'
-                    ? (msg.sender_avatar || userAvatar)
-                    : (activeConv?.ai_avatar || currentUser?.ai_avatar || aiAvatar))
+                    ? (resolveBackendAssetUrl(msg.sender_avatar) || userAvatar)
+                    : (resolveBackendAssetUrl(activeConv?.ai_avatar) || resolveBackendAssetUrl(currentUser?.ai_avatar) || aiAvatar))
                 const isStickerMessage = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
                   (msg.content || '').trim().startsWith('[表情包]')
                 const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
@@ -1144,7 +1155,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               {isWaiting && (
                 <div className="bubble-row assistant typing-indicator-row">
                   <div className="msg-avatar">
-                    <img src={activeConv?.ai_avatar || currentUser?.ai_avatar || aiAvatar} alt="AI" />
+                    <img src={resolveBackendAssetUrl(activeConv?.ai_avatar) || resolveBackendAssetUrl(currentUser?.ai_avatar) || aiAvatar} alt="AI" />
                   </div>
                   <div className="bubble typing-indicator">
                     <span></span>
@@ -1255,7 +1266,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 <label>用户头像</label>
                 <div className="avatar-upload-row">
                   <div className="avatar-preview">
-                    <img src={userProfileData.avatar || userAvatar} alt="用户头像" />
+                    <img src={resolveBackendAssetUrl(userProfileData.avatar) || userAvatar} alt="用户头像" />
                   </div>
                   <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('user')}>
                     <UploadCloud size={16} /> 上传头像
@@ -1275,7 +1286,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 <label>AI 头像</label>
                 <div className="avatar-upload-row">
                   <div className="avatar-preview">
-                    <img src={userProfileData.ai_avatar || aiAvatar} alt="AI头像" />
+                    <img src={resolveBackendAssetUrl(userProfileData.ai_avatar) || aiAvatar} alt="AI头像" />
                   </div>
                   <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('ai')}>
                     <UploadCloud size={16} /> 上传头像
@@ -1302,7 +1313,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               {groupMembers.map(m => (
                 <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <img src={m.avatar || userAvatar} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <img src={resolveBackendAssetUrl(m.avatar) || userAvatar} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
                       <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{m.display_name}</span>
                       {m.is_owner && <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#eff6ff', color: '#3b82f6' }}>群主</span>}

@@ -22,6 +22,18 @@ export function withApiBase(url) {
   return `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`
 }
 
+function normalizeUserAssets(user) {
+  if (!user || typeof user !== 'object') return user
+  const next = { ...user }
+  if (typeof next.avatar === 'string' && (next.avatar.startsWith('/data/') || next.avatar.startsWith('/uploads/') || next.avatar.startsWith('/api/'))) {
+    next.avatar = withApiBase(next.avatar)
+  }
+  if (typeof next.ai_avatar === 'string' && (next.ai_avatar.startsWith('/data/') || next.ai_avatar.startsWith('/uploads/') || next.ai_avatar.startsWith('/api/'))) {
+    next.ai_avatar = withApiBase(next.ai_avatar)
+  }
+  return next
+}
+
 export function getWsBaseUrl() {
   if (!API_BASE_URL) return ''
   const wsProtocol = API_BASE_URL.startsWith('https://') ? 'wss://' : 'ws://'
@@ -36,14 +48,14 @@ export function getToken() {
 /** 保存 token 和用户信息到 localStorage */
 export function saveAuth(token, user) {
   localStorage.setItem(TOKEN_KEY, token)
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  localStorage.setItem(USER_KEY, JSON.stringify(normalizeUserAssets(user)))
 }
 
 /** 从 localStorage 获取已保存的用户信息 */
 export function getSavedUser() {
   try {
     const raw = localStorage.getItem(USER_KEY)
-    return raw ? JSON.parse(raw) : null
+    return raw ? normalizeUserAssets(JSON.parse(raw)) : null
   } catch {
     return null
   }
@@ -112,8 +124,9 @@ export async function verifyToken() {
       return null
     }
     const user = await res.json()
-    saveAuth(token, user)
-    return user
+    const normalizedUser = normalizeUserAssets(user)
+    saveAuth(token, normalizedUser)
+    return normalizedUser
   } catch {
     return null
   }
