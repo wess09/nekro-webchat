@@ -22,7 +22,7 @@ from app.database import (
 from app.hub import hub
 from app.routes import get_conversations_with_last_message
 from app.sse_client import client, ensure_subscribed
-from app.utils import message_payload
+from app.utils import message_payload, resolve_sender_avatars
 from app.auth import get_ws_user
 
 router = APIRouter()
@@ -77,8 +77,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
 
         # 4. 推送当前会话的历史聊天记录
         rows = await list_recent_messages(current.channel_id)
+        avatars = await resolve_sender_avatars(rows)
         await websocket.send_json(
-            {"type": "history", "channel_id": current.channel_id, "items": [message_payload(row, current) for row in rows]},
+            {"type": "history", "channel_id": current.channel_id, "items": [message_payload(row, current, sender_avatar=avatars.get(row.sender_id, "")) for row in rows]},
         )
 
         # 5. 持续循环监听来自前端浏览器的操作
@@ -98,9 +99,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
                 # 更新长连接中的“关注频道”标记
                 await hub.set_channel(websocket, channel_id)
                 rows = await list_recent_messages(channel_id)
+                avatars = await resolve_sender_avatars(rows)
                 # 重新推送该会话的历史记录给前端
                 await websocket.send_json(
-                    {"type": "history", "channel_id": channel_id, "items": [message_payload(row, current) for row in rows]},
+                    {"type": "history", "channel_id": channel_id, "items": [message_payload(row, current, sender_avatar=avatars.get(row.sender_id, "")) for row in rows]},
                 )
                 continue
 
@@ -140,7 +142,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
             )
             
             # 广播给当前会话下的其它前端客户端（例如多开网页同步）
-            await hub.broadcast(conversation.channel_id, message_payload(saved, conversation))
+            await hub.broadcast(conversation.channel_id, message_payload(saved, conversation, sender_avatar=user.avatar or ""))
 
             ai_mentioned = _is_ai_mentioned(content, conversation.ai_name)
 

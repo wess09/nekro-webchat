@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File as FastAPIFile, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File as FastAPIFile, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.auth import User, get_current_user
@@ -24,7 +24,7 @@ from app.database import (
     user_can_access_conversation,
 )
 from app.sse_client import client, ensure_subscribed
-from app.utils import cleanup_uploaded_files, get_upload_path, message_payload
+from app.utils import cleanup_uploaded_files, get_upload_path, message_payload, resolve_sender_avatars
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -51,6 +51,13 @@ async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any
     )
     last_msg = msg_res.scalar_one_or_none()
     d = conversation_to_dict(conv)
+    
+    from app.auth import User
+    if conv.user_id:
+        u_res = await session.execute(select(User).where(User.id == conv.user_id))
+        owner_user = u_res.scalar_one_or_none()
+        if owner_user:
+            d["ai_avatar"] = owner_user.ai_avatar or ""
     
     # 格式化最后一条消息的展示文本
     if last_msg:
@@ -124,6 +131,29 @@ async def api_conversations(_user: User = Depends(get_current_user)) -> dict[str
         return {"items": items}
 
 
+@router.delete("/api/conversations/{channel_id}")
+async def api_delete_conversation(channel_id: str, _user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """用户删除单个对话会话。"""
+    from app.database import SessionLocal, Conversation, ChatMessage, ConversationMember
+    from sqlalchemy import delete, select
+    
+    async with SessionLocal() as session:
+        # 1. 映射 channel_id 获取 UUID
+        res = await session.execute(select(Conversation).where(Conversation.channel_id == channel_id))
+        conversation = res.scalar_one_or_none()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="会话不存在")
+            
+        conv_id = conversation.id
+        
+        # 2. 移除级联关联信息
+        await session.execute(delete(ChatMessage).where(ChatMessage.conversation_id == conv_id))
+        await session.execute(delete(ConversationMember).where(ConversationMember.conversation_id == conv_id))
+        await session.execute(delete(Conversation).where(Conversation.id == conv_id))
+        await session.commit()
+    return {"status": "ok"}
+
+
 @router.post("/api/conversations")
 async def api_create_conversation(payload: dict[str, str], _user: User = Depends(get_current_user)) -> dict[str, Any]:
     """用户在前端主动创建一个新的 AI 对话。"""
@@ -175,7 +205,8 @@ async def api_messages(channel_id: str, before_id: int | None = None, limit: int
         raise HTTPException(status_code=403, detail="会话不存在或无权访问")
         
     rows = await list_recent_messages(channel_id, before_id=before_id, limit=limit)
-    return {"items": [message_payload(row, conversation) for row in rows]}
+    avatars = await resolve_sender_avatars(rows)
+    return {"items": [message_payload(row, conversation, sender_avatar=avatars.get(row.sender_id, "")) for row in rows]}
 
 
 @router.get("/api/conversations/{channel_id}/invite")
@@ -216,13 +247,20 @@ async def api_join_invite(invite_key: str, _user: User = Depends(get_current_use
 async def api_upload(
     background_tasks: BackgroundTasks,
     file_data: UploadFile = FastAPIFile(...), 
+    channel_id: str | None = Form(None),
     _user: User = Depends(get_current_user)
 ) -> dict[str, Any]:
     """
     通用文件/图片上传接口。
-    前端拖拽/选中文件后在此流式落盘，并生成可直接渲染的 URL。
+    文件保存在 /data/user/uid/uploads/频道ID
+    如果在群聊则保存在群主的 UID 下
     """
     from app.config import settings
+    from app.database import SessionLocal, Conversation
+    from sqlalchemy import select
+    import uuid
+    from fastapi import HTTPException
+    import shutil
 
     # 1. 限制上传文件的最大大小
     if settings.max_upload_size_mb > 0:
@@ -237,9 +275,30 @@ async def api_upload(
     background_tasks.add_task(cleanup_uploaded_files)
 
     mime = file_data.content_type or "application/octet-stream"
-    target, file_url = get_upload_path(file_data.filename or "file", mime)
+    uid = str(_user.id)
+    cid = channel_id or "default"
+
+    # 3. 确定群主 UID 或是拥有者 UID
+    if channel_id:
+        async with SessionLocal() as session:
+            res = await session.execute(select(Conversation).where(Conversation.id == channel_id))
+            conversation = res.scalar_one_or_none()
+            if conversation and conversation.user_id:
+                uid = conversation.user_id
+
+    # 路径拼接
+    base_dir = Path(__file__).resolve().parent.parent
+    upload_dir = base_dir / "data" / "user" / uid / "uploads" / cid
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    ext = Path(file_data.filename or "file").suffix
+    unique_filename = f"{uuid.uuid4().hex}{ext}"
+    target = upload_dir / unique_filename
+
     with target.open("wb") as out:
         shutil.copyfileobj(file_data.file, out)
+
+    file_url = f"/data/user/{uid}/uploads/{cid}/{unique_filename}"
     return {
         "file_url": file_url,
         "file_name": Path(file_data.filename or "file").name,
@@ -247,3 +306,115 @@ async def api_upload(
         "file_size": target.stat().st_size,
         "file_path": str(target),
     }
+
+@router.post("/api/conversations/{channel_id}/leave")
+async def leave_conversation(
+    channel_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    from app.database import SessionLocal, get_conversation, ConversationMember, Conversation
+    from sqlalchemy import delete, select
+    from fastapi import HTTPException
+
+    async with SessionLocal() as session:
+        result = await session.execute(select(Conversation).where(Conversation.channel_id == channel_id))
+        conversation = result.scalar_one_or_none()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        
+        if conversation.user_id == str(current_user.id):
+            raise HTTPException(status_code=400, detail="群主不能退出群聊")
+
+        await session.execute(
+            delete(ConversationMember).where(
+                ConversationMember.conversation_id == conversation.id,
+                ConversationMember.user_id == str(current_user.id),
+            )
+        )
+        await session.commit()
+    return {"detail": "已成功退出群聊"}
+
+@router.get("/api/conversations/{channel_id}/members")
+async def list_conversation_members(
+    channel_id: str,
+    current_user: User = Depends(get_current_user)
+) -> list[dict[str, Any]]:
+    from app.database import SessionLocal, Conversation, ConversationMember
+    from app.auth import User as DBUser
+    from sqlalchemy import select
+    from fastapi import HTTPException
+
+    async with SessionLocal() as session:
+        res = await session.execute(select(Conversation).where(Conversation.channel_id == channel_id))
+        conv = res.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        owner_res = await session.execute(select(DBUser).where(DBUser.id == conv.user_id))
+        owner_user = owner_res.scalar_one_or_none()
+
+        members_res = await session.execute(select(ConversationMember).where(ConversationMember.conversation_id == conv.id))
+        members = members_res.scalars().all()
+
+        ret = []
+        if owner_user:
+            ret.append({
+                "user_id": str(owner_user.id),
+                "display_name": owner_user.display_name or owner_user.username,
+                "avatar": owner_user.avatar or "/static/user.png",
+                "is_owner": True
+            })
+
+        member_ids = [m.user_id for m in members if str(m.user_id) != str(conv.user_id)]
+        
+        if member_ids:
+            user_avatars_res = await session.execute(select(DBUser).where(DBUser.id.in_(member_ids)))
+            users_map = {str(u.id): u for u in user_avatars_res.scalars().all()}
+            
+            for m in members:
+                if str(m.user_id) == str(conv.user_id):
+                    continue
+                u = users_map.get(str(m.user_id))
+                ret.append({
+                    "user_id": str(m.user_id),
+                    "display_name": u.display_name if u else (m.user_name or "未知成员"),
+                    "avatar": (u.avatar if u else "") or "/static/user.png",
+                    "is_owner": False
+                })
+        else:
+            # 如果没人，只有群主
+            pass
+
+        return ret
+
+
+@router.delete("/api/conversations/{channel_id}/members/{user_id}")
+async def remove_conversation_member(
+    channel_id: str,
+    user_id: str,
+    current_user: User = Depends(get_current_user)
+) -> dict[str, str]:
+    from app.database import SessionLocal, Conversation, ConversationMember
+    from sqlalchemy import delete, select
+    from fastapi import HTTPException
+
+    async with SessionLocal() as session:
+        res = await session.execute(select(Conversation).where(Conversation.channel_id == channel_id))
+        conv = res.scalar_one_or_none()
+        if not conv:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        
+        if str(conv.user_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="只有群主可以移出成员")
+        
+        if str(user_id) == str(current_user.id):
+            raise HTTPException(status_code=400, detail="不能移出群主自己")
+
+        await session.execute(
+            delete(ConversationMember).where(
+                ConversationMember.conversation_id == conv.id,
+                ConversationMember.user_id == user_id
+            )
+        )
+        await session.commit()
+    return {"detail": "已移出群成员"}

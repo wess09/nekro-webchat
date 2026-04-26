@@ -24,6 +24,10 @@ app.mount(
 )
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+DATA_DIR = BASE_DIR / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
+
 app.include_router(auth_router)
 app.include_router(http_router)
 app.include_router(ws_router)

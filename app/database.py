@@ -131,6 +131,16 @@ async def _ensure_columns() -> None:
             if name not in message_cols:
                 await conn.execute(sql_text(f"ALTER TABLE messages ADD COLUMN {name} {ddl}"))
 
+        rows = await conn.execute(sql_text("PRAGMA table_info(users)"))
+        user_cols = {row[1] for row in rows.fetchall()}
+        user_adds = {
+            "ai_avatar": "TEXT DEFAULT ''",
+            "ai_name": "TEXT DEFAULT 'NekroAgent'",
+        }
+        for name, ddl in user_adds.items():
+            if name not in user_cols:
+                await conn.execute(sql_text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+
         # 迁移最近这版不兼容上游插件解析规则的 channel_id。
         rows = await conn.execute(
             sql_text("SELECT id, channel_id, kind, user_id FROM conversations")
@@ -383,14 +393,18 @@ async def join_conversation_by_invite_key(
         )
         existing_member = existing.scalars().first()
         if existing_member is None:
-            session.add(
-                ConversationMember(
-                    conversation_id=conversation.id,
-                    user_id=user_id,
-                    user_name=user_name,
+            from sqlalchemy.exc import IntegrityError
+            try:
+                session.add(
+                    ConversationMember(
+                        conversation_id=conversation.id,
+                        user_id=user_id,
+                        user_name=user_name,
+                    )
                 )
-            )
-            await session.commit()
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
         else:
             await session.execute(
                 delete(ConversationMember).where(
