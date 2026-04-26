@@ -1253,6 +1253,21 @@ textarea {
   margin: 8px 0;
 }
 
+.markdown-body dl {
+  margin: 12px 0;
+}
+
+.markdown-body dt {
+  font-weight: 600;
+  color: var(--text-main);
+  margin-top: 10px;
+}
+
+.markdown-body dd {
+  margin-left: 20px;
+  color: var(--text-muted);
+}
+
 .bubble-row.user .markdown-body code {
   background: rgba(255, 255, 255, 0.2);
   color: white;
@@ -1260,6 +1275,117 @@ textarea {
 
 .bubble-row.user .markdown-body pre {
   background: rgba(255, 255, 255, 0.15);
+}
+
+.markdown-body a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.bubble-row.user .markdown-body a {
+  color: #fff;
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(229, 231, 235, 0.8);
+  margin: 16px 0;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.markdown-mermaid,
+.markdown-mermaid-loading,
+.markdown-mermaid-error {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  overflow-x: auto;
+}
+
+.markdown-mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-mermaid-error {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.markdown-mermaid-error pre {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 0;
+}
+
+.markdown-alert {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.markdown-alert-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.markdown-alert-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-alert-note {
+  border-color: rgba(59, 130, 246, 0.24);
+  background: #eff6ff;
+}
+
+.markdown-alert-note .markdown-alert-title {
+  color: #1d4ed8;
+}
+
+.markdown-alert-tip {
+  border-color: rgba(16, 185, 129, 0.24);
+  background: #ecfdf5;
+}
+
+.markdown-alert-tip .markdown-alert-title {
+  color: #047857;
+}
+
+.markdown-alert-important {
+  border-color: rgba(139, 92, 246, 0.24);
+  background: #f5f3ff;
+}
+
+.markdown-alert-important .markdown-alert-title {
+  color: #6d28d9;
+}
+
+.markdown-alert-warning,
+.markdown-alert-caution {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: #fffbeb;
+}
+
+.markdown-alert-warning .markdown-alert-title,
+.markdown-alert-caution .markdown-alert-title {
+  color: #b45309;
 }
 
 /* 文件在线预览弹窗 */

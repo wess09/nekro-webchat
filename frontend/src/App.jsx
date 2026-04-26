@@ -1,11 +1,195 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft, MessageSquarePlus, UsersRound, Settings, Save, UserPlus, Send, UploadCloud, Trash2 } from 'lucide-react'
+import 'katex/dist/katex.min.css'
 import ReactMarkdown from 'react-markdown'
+import mermaid from 'mermaid'
+import rehypeKatex from 'rehype-katex'
+import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
+import remarkDeflist from 'remark-deflist'
+import remarkMath from 'remark-math'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { authFetch, getToken, getWsBaseUrl, clearAuth, saveAuth, withApiBase } from './auth'
+
+mermaid.initialize({
+  startOnLoad: false,
+  securityLevel: 'loose',
+  theme: 'neutral',
+})
+
+const markdownSchema = {
+  ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), 'svg', 'path', 'g', 'circle', 'ellipse', 'line', 'marker', 'polygon', 'polyline', 'rect', 'text', 'tspan', 'defs', 'foreignObject', 'style', 'br', 'math', 'semantics', 'mrow', 'mi', 'mn', 'mo', 'msup', 'msub', 'mfrac', 'msqrt', 'mspace', 'annotation'],
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [...(defaultSchema.attributes?.['*'] || []), 'className', 'style', 'align'],
+    a: [...(defaultSchema.attributes?.a || []), 'target', 'rel'],
+    code: [...(defaultSchema.attributes?.code || []), 'className'],
+    div: [...(defaultSchema.attributes?.div || []), 'className'],
+    span: [...(defaultSchema.attributes?.span || []), 'className'],
+    svg: ['xmlns', 'width', 'height', 'viewBox', 'role', 'aria-labelledby', 'aria-roledescription', 'className', 'style'],
+    path: ['d', 'fill', 'stroke', 'stroke-width', 'marker-end', 'marker-start', 'className', 'style'],
+    g: ['transform', 'className', 'style'],
+    circle: ['cx', 'cy', 'r', 'fill', 'stroke', 'className', 'style'],
+    ellipse: ['cx', 'cy', 'rx', 'ry', 'fill', 'stroke', 'className', 'style'],
+    line: ['x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width', 'marker-end', 'marker-start', 'className', 'style'],
+    marker: ['id', 'markerWidth', 'markerHeight', 'refX', 'refY', 'orient', 'className', 'style'],
+    polygon: ['points', 'fill', 'stroke', 'className', 'style'],
+    polyline: ['points', 'fill', 'stroke', 'className', 'style'],
+    rect: ['x', 'y', 'width', 'height', 'rx', 'ry', 'fill', 'stroke', 'className', 'style'],
+    text: ['x', 'y', 'dx', 'dy', 'fill', 'text-anchor', 'dominant-baseline', 'font-size', 'font-family', 'className', 'style'],
+    tspan: ['x', 'y', 'dx', 'dy', 'className', 'style'],
+    foreignObject: ['x', 'y', 'width', 'height', 'className', 'style'],
+    style: ['type'],
+    math: ['xmlns', 'display', 'className', 'style'],
+    semantics: ['className', 'style'],
+    mrow: ['className', 'style'],
+    mi: ['mathvariant', 'className', 'style'],
+    mn: ['className', 'style'],
+    mo: ['stretchy', 'fence', 'separator', 'className', 'style'],
+    msup: ['className', 'style'],
+    msub: ['className', 'style'],
+    mfrac: ['linethickness', 'className', 'style'],
+    msqrt: ['className', 'style'],
+    mspace: ['width', 'height', 'depth', 'className', 'style'],
+    annotation: ['encoding', 'className', 'style'],
+  },
+}
+
+function MarkdownAlert({ type = 'note', title, children }) {
+  return (
+    <div className={`markdown-alert markdown-alert-${type}`}>
+      <div className="markdown-alert-title">{title}</div>
+      <div className="markdown-alert-body">{children}</div>
+    </div>
+  )
+}
+
+function MermaidBlock({ chart }) {
+  const [svg, setSvg] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function renderChart() {
+      try {
+        const id = `mermaid-${Math.random().toString(36).slice(2)}`
+        const { svg: renderedSvg } = await mermaid.render(id, chart)
+        if (!cancelled) {
+          setSvg(renderedSvg)
+          setError('')
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSvg('')
+          setError(err instanceof Error ? err.message : 'Mermaid 渲染失败')
+        }
+      }
+    }
+    renderChart()
+    return () => {
+      cancelled = true
+    }
+  }, [chart])
+
+  if (error) {
+    return (
+      <div className="markdown-mermaid-error">
+        <div>Mermaid 渲染失败</div>
+        <pre>{error}</pre>
+      </div>
+    )
+  }
+
+  if (!svg) {
+    return <div className="markdown-mermaid-loading">Mermaid 渲染中...</div>
+  }
+
+  return <div className="markdown-mermaid" dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
+function MarkdownRenderer({ content }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkBreaks, remarkMath, remarkDeflist]}
+      rehypePlugins={[[rehypeRaw], [rehypeKatex], [rehypeSanitize, markdownSchema]]}
+      components={{
+        a({ href, children, ...props }) {
+          return (
+            <a href={href} target="_blank" rel="noreferrer" {...props}>
+              {children}
+            </a>
+          )
+        },
+        code({ inline, className, children, ...props }) {
+          const value = String(children).replace(/\n$/, '')
+          const match = /language-(\w+)/.exec(className || '')
+          const language = match?.[1]?.toLowerCase()
+
+          if (!inline && language === 'mermaid') {
+            return <MermaidBlock chart={value} />
+          }
+
+          if (!inline) {
+            return (
+              <SyntaxHighlighter
+                language={language || 'text'}
+                style={atomDark}
+                customStyle={{ margin: 0, borderRadius: '8px', padding: '16px' }}
+                PreTag="div"
+                {...props}
+              >
+                {value}
+              </SyntaxHighlighter>
+            )
+          }
+
+          return (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          )
+        },
+        blockquote({ children }) {
+          const childArray = React.Children.toArray(children)
+          const firstChild = childArray[0]
+          if (React.isValidElement(firstChild) && firstChild.type === 'p') {
+            const paragraphChildren = React.Children.toArray(firstChild.props.children)
+            const firstText = paragraphChildren[0]
+            if (typeof firstText === 'string') {
+              const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i)
+              if (match) {
+                const alertType = match[1].toLowerCase()
+                const titleMap = {
+                  note: 'Note',
+                  tip: 'Tip',
+                  important: 'Important',
+                  warning: 'Warning',
+                  caution: 'Caution',
+                }
+                paragraphChildren[0] = firstText.replace(match[0], '')
+                const normalizedChildren = [...childArray]
+                normalizedChildren[0] = React.cloneElement(firstChild, {}, paragraphChildren)
+                return (
+                  <MarkdownAlert type={alertType} title={titleMap[alertType] || 'Note'}>
+                    {normalizedChildren}
+                  </MarkdownAlert>
+                )
+              }
+            }
+          }
+          return <blockquote>{children}</blockquote>
+        },
+      }}
+    >
+      {content || ''}
+    </ReactMarkdown>
+  )
+}
 
 export default function App({ currentUser: initialUser, onLogout }) {
   const [currentUser, setUserState] = useState(initialUser)
@@ -863,7 +1047,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         msg.content.trim() !== `[图片]${msg.file_name}`
                       )) && (
                           <div className="markdown-body">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                            <MarkdownRenderer content={msg.content} />
                           </div>
                         )}
                       {msg.file_url && (
@@ -1094,7 +1278,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
             <div className="file-preview-body">
               {previewFile.type === 'md' && (
                 <div className="markdown-body">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{previewFile.content}</ReactMarkdown>
+                  <MarkdownRenderer content={previewFile.content} />
                 </div>
               )}
               {previewFile.type === 'html' && (
