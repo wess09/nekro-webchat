@@ -16,10 +16,12 @@ class Base(DeclarativeBase):
     pass
 
 
+import uuid
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     channel_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     channel_name: Mapped[str] = mapped_column(String(128))
     kind: Mapped[str] = mapped_column(String(32), default="direct")
@@ -39,7 +41,7 @@ class ChatMessage(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id"), index=True)
     message_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     role: Mapped[str] = mapped_column(String(32))
     sender_id: Mapped[str] = mapped_column(String(128))
@@ -61,7 +63,7 @@ class ConversationMember(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(128), index=True)
     user_name: Mapped[str] = mapped_column(String(128), default="")
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -179,6 +181,19 @@ async def _ensure_columns() -> None:
 
 async def init_db() -> None:
     async with engine.begin() as conn:
+        try:
+            # 探测现有表主键类型
+            rows = await conn.execute(sql_text("PRAGMA table_info(conversations)"))
+            info = rows.fetchall()
+            if info:
+                for row in info:
+                    if row[1] == "id" and "INT" in str(row[2]).upper():
+                        # 旧版使用的是 INT 主键，执行数据表重建
+                        await conn.run_sync(Base.metadata.drop_all)
+                        break
+        except Exception:
+            pass
+
         await conn.run_sync(Base.metadata.create_all)
     await _ensure_columns()
 
@@ -225,9 +240,9 @@ async def create_conversation(
 ) -> Conversation:
     if channel_id is None:
         if kind == "group":
-            channel_id = f"group_{user_id or 'anon'}-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+            channel_id = f"group_{uuid.uuid4().hex}"
         else:
-            channel_id = f"direct_{user_id or 'anon'}-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+            channel_id = f"direct_{uuid.uuid4().hex}"
     async with SessionLocal() as session:
         conversation = Conversation(
             channel_id=channel_id,
