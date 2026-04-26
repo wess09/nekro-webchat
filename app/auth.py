@@ -158,6 +158,27 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:
     return user
 
 
+async def get_optional_current_user(token: str | None = Depends(oauth2_scheme)) -> User | None:
+    """
+    HTTP 路由依赖：尝试从 Authorization 头解析当前用户，失败时返回 None。
+    适用于还允许其他认证方式兜底的场景。
+    """
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub_val = payload.get("sub")
+        if sub_val is None:
+            return None
+        user_id = str(sub_val)
+    except JWTError:
+        return None
+
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
+
 async def get_ws_user(token: str | None) -> User | None:
     """
     WebSocket 专用：从查询参数中的 token 解析用户，解析失败返回 None。

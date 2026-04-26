@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, File as FastAPIFile, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from app.auth import User, get_current_user, get_ws_user
+from app.auth import User, get_current_user, get_optional_current_user, get_ws_user
 from app.database import (
     Conversation,
     ChatMessage,
@@ -424,7 +424,7 @@ async def remove_conversation_member(
 async def api_download_file(
     path: str,
     name: str | None = None,
-    current_user: User | None = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_current_user),
     token: str | None = None,
 ):
     """
