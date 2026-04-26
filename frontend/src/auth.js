@@ -5,6 +5,28 @@
 
 const TOKEN_KEY = 'nekro_webchat_token'
 const USER_KEY = 'nekro_webchat_user'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+
+function isAbsoluteUrl(value) {
+  return /^https?:\/\//i.test(value)
+}
+
+export function getApiBaseUrl() {
+  return API_BASE_URL
+}
+
+export function withApiBase(url) {
+  if (!url) return url
+  if (isAbsoluteUrl(url)) return url
+  if (!API_BASE_URL) return url
+  return `${API_BASE_URL}${url.startsWith('/') ? url : `/${url}`}`
+}
+
+export function getWsBaseUrl() {
+  if (!API_BASE_URL) return ''
+  const wsProtocol = API_BASE_URL.startsWith('https://') ? 'wss://' : 'ws://'
+  return API_BASE_URL.replace(/^https?:\/\//i, wsProtocol)
+}
 
 /** 从 localStorage 获取已保存的 token */
 export function getToken() {
@@ -43,7 +65,7 @@ export async function authFetch(url, options = {}) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch(url, { ...options, headers })
+  const res = await fetch(withApiBase(url), { ...options, headers })
   if (res.status === 401) {
     clearAuth()
     window.location.reload()
@@ -53,7 +75,7 @@ export async function authFetch(url, options = {}) {
 
 /** 注册 */
 export async function register(username, password, displayName) {
-  const res = await fetch('/api/auth/register', {
+  const res = await fetch(withApiBase('/api/auth/register'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, display_name: displayName }),
@@ -66,7 +88,7 @@ export async function register(username, password, displayName) {
 
 /** 登录 */
 export async function login(username, password) {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(withApiBase('/api/auth/login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -82,7 +104,7 @@ export async function verifyToken() {
   const token = getToken()
   if (!token) return null
   try {
-    const res = await fetch('/api/auth/me', {
+    const res = await fetch(withApiBase('/api/auth/me'), {
       headers: { 'Authorization': `Bearer ${token}` },
     })
     if (!res.ok) {

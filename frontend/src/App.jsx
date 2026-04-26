@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { authFetch, getToken, clearAuth, saveAuth } from './auth'
+import { authFetch, getToken, getWsBaseUrl, clearAuth, saveAuth, withApiBase } from './auth'
 
 export default function App({ currentUser: initialUser, onLogout }) {
   const [currentUser, setUserState] = useState(initialUser)
@@ -209,10 +209,12 @@ export default function App({ currentUser: initialUser, onLogout }) {
   }
 
   const connectWebSocket = () => {
+    const token = getToken()
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host
-    const token = getToken()
-    const wsUrl = `${protocol}://${host}/ws?token=${encodeURIComponent(token)}`
+    const wsBaseUrl = getWsBaseUrl()
+    const wsOrigin = wsBaseUrl || `${protocol}://${host}`
+    const wsUrl = `${wsOrigin}/ws?token=${encodeURIComponent(token)}`
 
     const ws = new WebSocket(wsUrl)
     socketRef.current = ws
@@ -584,7 +586,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
 
   const handlePreviewFile = async (name, url) => {
     try {
-      const res = await fetch(url)
+      const res = await fetch(withApiBase(url))
       if (!res.ok) {
         if (res.status === 404) {
           alert('文件已过期或被系统自动清理')
@@ -598,7 +600,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
       let type = 'text'
       if (ext === 'md') type = 'md'
       else if (ext === 'html') type = 'html'
-      setPreviewFile({ name, url, content, type })
+      setPreviewFile({ name, url: withApiBase(url), content, type })
     } catch (err) {
       console.error('预览文件失败:', err)
       alert('无法加载文件内容')
@@ -867,13 +869,13 @@ export default function App({ currentUser: initialUser, onLogout }) {
                       {msg.file_url && (
                         <div className="message-attachment">
                           {(msg.mime_type || '').startsWith('image/') ? (
-                            <img
+                              <img
                               className="bubble-image"
-                              src={msg.file_url}
+                              src={withApiBase(msg.file_url)}
                               alt={msg.file_name || 'image'}
                               onClick={(e) => {
                                 if (!e.target.classList.contains('expired')) {
-                                  setPreviewImage(msg.file_url)
+                                  setPreviewImage(withApiBase(msg.file_url))
                                 }
                               }}
                               onError={(e) => {
@@ -895,10 +897,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                                 <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                               </div>
 
-                              <a className="file-download-btn" href={`/api/download?path=${encodeURIComponent(msg.file_url)}&name=${encodeURIComponent(msg.file_name)}&token=${encodeURIComponent(getToken())}`} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
+                              <a className="file-download-btn" href={withApiBase(`/api/download?path=${encodeURIComponent(msg.file_url)}&name=${encodeURIComponent(msg.file_name)}&token=${encodeURIComponent(getToken())}`)} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  const res = await fetch(msg.file_url, { method: 'HEAD' });
+                                  const res = await fetch(withApiBase(msg.file_url), { method: 'HEAD' });
                                   if (!res.ok && res.status === 404) {
                                     e.preventDefault();
                                     alert('文件已过期或被系统自动清理');
