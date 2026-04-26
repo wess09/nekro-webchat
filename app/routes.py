@@ -418,3 +418,50 @@ async def remove_conversation_member(
         )
         await session.commit()
     return {"detail": "已移出群成员"}
+
+
+@router.get("/api/download")
+async def api_download_file(
+    path: str,
+    name: str | None = None,
+    _user: User = Depends(get_current_user)
+):
+    """
+    专门为绕过 iOS 平台 download 属性限制而设计的文件流式下载器。
+    """
+    from fastapi.responses import FileResponse
+    from urllib.parse import unquote
+    from fastapi import HTTPException
+    
+    path_str = unquote(path)
+    if not path_str.startswith("/data/"):
+         raise HTTPException(status_code=403, detail="禁止访问该路径")
+         
+    relative_path = path_str.lstrip("/")
+    base_dir = Path(__file__).resolve().parent.parent
+    physical_path = base_dir / relative_path
+    
+    if not physical_path.exists() or not physical_path.is_file():
+         raise HTTPException(status_code=404, detail="文件不存在或已被自动清理")
+         
+    download_name = name if name else physical_path.name
+    
+    return FileResponse(
+         path=physical_path,
+         filename=download_name,
+         media_type="application/octet-stream"
+    )
+
+
+@router.get("/static/user.png")
+async def get_static_user_png():
+    from fastapi.responses import FileResponse
+    base_dir = Path(__file__).resolve().parent.parent
+    return FileResponse(base_dir / "static" / "user.png")
+
+
+@router.get("/static/ai.png")
+async def get_static_ai_png():
+    from fastapi.responses import FileResponse
+    base_dir = Path(__file__).resolve().parent.parent
+    return FileResponse(base_dir / "static" / "ai.png")
