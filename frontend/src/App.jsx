@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft, MessageSquarePlus, UsersRound, Settings, Save, UserPlus, Send, UploadCloud, Trash2 } from 'lucide-react'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft, MessageSquarePlus, UsersRound, Settings, Save, UserPlus, Send, UploadCloud, Trash2, SmilePlus } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import ReactMarkdown from 'react-markdown'
 import mermaid from 'mermaid'
@@ -20,6 +20,28 @@ mermaid.initialize({
   securityLevel: 'loose',
   theme: 'neutral',
 })
+
+const STICKERS = [
+  { name: '大笑', src: '/static/大笑.webp' },
+  { name: '伤心', src: '/static/伤心.webp' },
+  { name: '喜欢', src: '/static/喜欢.webp' },
+  { name: '委屈', src: '/static/委屈.webp' },
+  { name: '害羞', src: '/static/害羞.webp' },
+  { name: '思考', src: '/static/思考.webp' },
+  { name: '恐惧', src: '/static/恐惧.webp' },
+  { name: '振奋', src: '/static/振奋.webp' },
+  { name: '无聊', src: '/static/无聊.webp' },
+  { name: '疑惑', src: '/static/疑惑.webp' },
+  { name: '自信', src: '/static/自信.webp' },
+  { name: '认可', src: '/static/认可.webp' },
+  { name: '震惊', src: '/static/震惊.webp' },
+  { name: '生气', src: '/static/生气.webp' },
+  { name: '惊喜', src: '/static/惊喜.webp' },
+]
+
+function getStickerContent(name) {
+  return `[表情包] ${name}`
+}
 
 const markdownSchema = {
   ...defaultSchema,
@@ -206,6 +228,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
   const [groupMembers, setGroupMembers] = useState([])
   const [isRemoving, setIsRemoving] = useState(false)
   const [showAllMembersModal, setShowAllMembersModal] = useState(false)
+  const [showStickerPicker, setShowStickerPicker] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false)
   const [previewImage, setPreviewImage] = useState(null)
   const [previewFile, setPreviewFile] = useState(null)
@@ -711,6 +734,31 @@ export default function App({ currentUser: initialUser, onLogout }) {
     }
   }
 
+  const sendSticker = async (sticker) => {
+    if (socketRef.current?.readyState !== WebSocket.OPEN || !activeChannelId) return
+    try {
+      const content = getStickerContent(sticker.name)
+      const shouldWaitForAi = isAiMentioned(content)
+      setIsWaiting(shouldWaitForAi)
+      const response = await fetch(sticker.src)
+      if (!response.ok) throw new Error('表情包资源加载失败')
+      const blob = await response.blob()
+      const extension = sticker.src.split('.').pop()?.split('?')[0] || 'webp'
+      const file = new File([blob], `${sticker.name}.${extension}`, { type: blob.type || 'image/webp' })
+      const fileInfo = await uploadFile(file)
+      socketRef.current.send(JSON.stringify({
+        action: 'send',
+        channel_id: activeChannelId,
+        content,
+        file: fileInfo,
+      }))
+      setShowStickerPicker(false)
+    } catch (err) {
+      setIsWaiting(false)
+      showNotice(err.message || '发送表情包失败', 'error')
+    }
+  }
+
   const handleSend = async (e) => {
     e.preventDefault()
     const content = input.trim()
@@ -1039,8 +1087,15 @@ export default function App({ currentUser: initialUser, onLogout }) {
                   : (msg.role === 'user'
                     ? (getFullUrl(msg.sender_avatar) || '/static/user.png')
                     : (getFullUrl(activeConv?.ai_avatar) || getFullUrl(currentUser?.ai_avatar) || '/static/ai.png'))
+                const isStickerMessage = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
+                  (msg.content || '').trim().startsWith('[表情包]')
                 const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
-                  (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
+                  (
+                    !msg.content ||
+                    msg.content.trim() === `[图片] ${msg.file_name}` ||
+                    msg.content.trim() === `[图片]${msg.file_name}` ||
+                    isStickerMessage
+                  )
 
                 return (
                   <div key={index} className={`bubble-row ${rowRole}`}>
@@ -1049,7 +1104,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         <img src={avatarUrl} alt={msg.sender_name} />
                       </div>
                     )}
-                    <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''}`}>
+                    <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''} ${isStickerMessage ? 'bubble-sticker-only' : ''}`}>
                       {!isOwn && !isSystem && msg.role === 'user' && (
                         <div className="sender-name">{msg.sender_name || '用户'}</div>
                       )}
@@ -1057,7 +1112,8 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         msg.content.trim() !== `[文件] ${msg.file_name}` &&
                         msg.content.trim() !== `[文件]${msg.file_name}` &&
                         msg.content.trim() !== `[图片] ${msg.file_name}` &&
-                        msg.content.trim() !== `[图片]${msg.file_name}`
+                        msg.content.trim() !== `[图片]${msg.file_name}` &&
+                        !isStickerMessage
                       )) && (
                           <div className="markdown-body">
                             <MarkdownRenderer content={msg.content} />
@@ -1132,19 +1188,46 @@ export default function App({ currentUser: initialUser, onLogout }) {
             </div>
 
             <form className="composer" onSubmit={handleSend}>
-              <button
-                type="button"
-                className="icon-button attach-button"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                ＋
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                hidden
-                onChange={handleFileChange}
-              />
+              <div className="composer-actions">
+                <button
+                  type="button"
+                  className="icon-button attach-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="上传文件"
+                >
+                  ＋
+                </button>
+                <button
+                  type="button"
+                  className={`icon-button sticker-button ${showStickerPicker ? 'active' : ''}`}
+                  onClick={() => setShowStickerPicker(prev => !prev)}
+                  title="发送表情包"
+                >
+                  <SmilePlus size={20} />
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  hidden
+                  onChange={handleFileChange}
+                />
+                {showStickerPicker && (
+                  <div className="sticker-picker">
+                    {STICKERS.map(sticker => (
+                      <button
+                        key={sticker.name}
+                        type="button"
+                        className="sticker-item"
+                        onClick={() => sendSticker(sticker)}
+                        title={sticker.name}
+                      >
+                        <img src={sticker.src} alt={sticker.name} />
+                        <span>{sticker.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="compose-main">
                 {pendingFile && (
