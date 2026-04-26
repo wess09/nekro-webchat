@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, File as FastAPIFile, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from app.auth import User, get_current_user
+from app.auth import User, get_current_user, get_ws_user
 from app.database import (
     Conversation,
     ChatMessage,
@@ -424,7 +424,8 @@ async def remove_conversation_member(
 async def api_download_file(
     path: str,
     name: str | None = None,
-    _user: User = Depends(get_current_user)
+    current_user: User | None = Depends(get_current_user),
+    token: str | None = None,
 ):
     """
     专门为绕过 iOS 平台 download 属性限制而设计的文件流式下载器。
@@ -432,7 +433,14 @@ async def api_download_file(
     from fastapi.responses import FileResponse
     from urllib.parse import unquote
     from fastapi import HTTPException
-    
+ 
+    # 普通 <a href> 下载不会附带 Authorization 头，这里允许前端在查询参数中附带 token。
+    user = current_user
+    if user is None and token:
+        user = await get_ws_user(token)
+    if user is None:
+        raise HTTPException(status_code=401, detail="未提供认证令牌")
+
     path_str = unquote(path)
     if not path_str.startswith("/data/"):
          raise HTTPException(status_code=403, detail="禁止访问该路径")
