@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut } from 'lucide-react'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -10,6 +10,7 @@ import { authFetch, getToken, clearAuth } from './auth'
 export default function App({ currentUser, onLogout }) {
   const [conversations, setConversations] = useState([])
   const [activeChannelId, setActiveChannelId] = useState('')
+  const [mobileView, setMobileView] = useState('list')
   const [status, setStatus] = useState({ text: '连接中', ok: false })
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -153,7 +154,9 @@ export default function App({ currentUser, onLogout }) {
   }
 
   const joinFromInviteUrl = async () => {
-    const match = window.location.pathname.match(/^\/invite\/([^/]+)$/)
+    const hashMatch = window.location.hash.match(/^#\/invite\/([^/]+)$/)
+    const pathMatch = window.location.pathname.match(/^\/invite\/([^/]+)$/)
+    const match = hashMatch || pathMatch
     if (!match) return
     const inviteKey = decodeURIComponent(match[1])
     try {
@@ -168,7 +171,7 @@ export default function App({ currentUser, onLogout }) {
       })
       selectConversation(item.channel_id)
       showNotice(`已加入「${item.channel_name}」`, 'success')
-      window.history.replaceState({}, '', '/')
+      window.history.replaceState({}, '', window.location.pathname)
     } catch (err) {
       showNotice(err.message || '加入群聊失败', 'error')
     }
@@ -263,6 +266,7 @@ export default function App({ currentUser, onLogout }) {
   const selectConversation = (channelId) => {
     activeChannelIdRef.current = channelId
     setActiveChannelId(channelId)
+    setMobileView('chat')
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ action: 'select', channel_id: channelId }))
     }
@@ -312,7 +316,7 @@ export default function App({ currentUser, onLogout }) {
       const res = await authFetch(`/api/conversations/${activeChannelId}/invite`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '获取邀请链接失败')
-      const inviteUrl = `${window.location.origin}${data.invite_path}`
+      const inviteUrl = `${window.location.origin}/#${data.invite_path}`
       await navigator.clipboard.writeText(inviteUrl)
       showNotice('群聊邀请链接已复制', 'success')
     } catch (err) {
@@ -465,7 +469,7 @@ export default function App({ currentUser, onLogout }) {
   }
 
   return (
-    <main className="shell">
+    <main className={`shell mobile-view-${mobileView}`}>
       <aside className="sidebar">
         <div className="profile">
           <div className="avatar">
@@ -520,6 +524,10 @@ export default function App({ currentUser, onLogout }) {
           </div>
         )}
         <header className="chat-header">
+          <button className="back-button" onClick={() => setMobileView('list')} type="button">
+            <ArrowLeft size={20} />
+            <span>返回</span>
+          </button>
           <div>
             <h1>{activeConv?.channel_name || 'WebChat'}</h1>
             <p>{activeConv ? `${activeConv.ai_name || 'NekroAgent'} · ${activeConv.channel_id}` : '-'}</p>

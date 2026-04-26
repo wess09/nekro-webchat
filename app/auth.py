@@ -44,11 +44,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.webchat_jwt_expire_minutes
 # ---------------------------------------------------------------------------
 
 
+import uuid
+
 class User(Base):
     """用户账号表。"""
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(128), default="")
     hashed_password: Mapped[str] = mapped_column(String(256))
@@ -83,7 +85,7 @@ class TokenResponse(BaseModel):
 
 class UserResponse(BaseModel):
     """用户公开信息。"""
-    id: int
+    id: str
     username: str
     display_name: str
     avatar: str
@@ -130,7 +132,7 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:
         sub_val = payload.get("sub")
         if sub_val is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效令牌")
-        user_id = int(sub_val)
+        user_id = str(sub_val)
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="令牌已过期或无效")
 
@@ -153,7 +155,7 @@ async def get_ws_user(token: str | None) -> User | None:
         sub_val = payload.get("sub")
         if sub_val is None:
             return None
-        user_id = int(sub_val)
+        user_id = str(sub_val)
     except JWTError:
         return None
 

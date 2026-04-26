@@ -620,11 +620,73 @@ textarea {
     width: 100vw;
     height: 100vh;
     border-radius: 0;
+    border: none;
   }
 
-  .sidebar {
+  .shell.mobile-view-list .sidebar {
+    display: flex;
+    width: 100vw;
+    border-right: none;
+  }
+  .shell.mobile-view-list .chat {
     display: none;
-    /* In a real mobile app, this would be a toggle drawer */
+  }
+
+  .shell.mobile-view-chat .sidebar {
+    display: none;
+  }
+  .shell.mobile-view-chat .chat {
+    display: flex;
+    width: 100vw;
+  }
+
+  .chat-header {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .chat-header .back-button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 6px 4px;
+  }
+
+  .chat-header .back-button:hover {
+    color: var(--primary-hover);
+  }
+
+  .messages {
+    padding: 16px;
+  }
+
+  .composer {
+    padding: 12px 16px;
+  }
+
+  .profile-panel {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .bubble-row {
+    max-width: 92%;
+  }
+
+  .file-attachment-card {
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 769px) {
+  .chat-header .back-button {
+    display: none;
   }
 }
 
