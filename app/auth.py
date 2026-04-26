@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, status
+from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Query, UploadFile, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 import bcrypt
@@ -55,6 +55,8 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(128), default="")
     hashed_password: Mapped[str] = mapped_column(String(256))
     avatar: Mapped[str] = mapped_column(String(512), default="")
+    ai_avatar: Mapped[str] = mapped_column(String(512), default="")
+    ai_name: Mapped[str] = mapped_column(String(128), default="NekroAgent")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -89,6 +91,16 @@ class UserResponse(BaseModel):
     username: str
     display_name: str
     avatar: str
+    ai_avatar: str
+    ai_name: str | None = "NekroAgent"
+
+
+class UpdateUserRequest(BaseModel):
+    """更新用户信息请求体。"""
+    display_name: str | None = Field(default=None, max_length=64)
+    avatar: str | None = Field(default=None, max_length=512)
+    ai_avatar: str | None = Field(default=None, max_length=512)
+    ai_name: str | None = Field(default=None, max_length=128)
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +123,8 @@ def _user_to_dict(user: User) -> dict[str, Any]:
         "username": user.username,
         "display_name": user.display_name or user.username,
         "avatar": user.avatar or "",
+        "ai_avatar": user.ai_avatar or "",
+        "ai_name": user.ai_name or "NekroAgent",
     }
 
 
@@ -171,6 +185,39 @@ async def get_ws_user(token: str | None) -> User | None:
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+@router.post("/upload/avatar")
+async def upload_avatar(
+    kind: str = Query(default="user", pattern="^(user|ai)$"),
+    file_data: UploadFile = FastAPIFile(...),
+    _user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    用户头像/AI头像专用上传接口。
+    头像保存到 data/user/{uid}/ 目录，覆盖同名文件。
+    kind: 'user' 表示用户头像, 'ai' 表示 AI 头像。
+    """
+    import shutil
+    from pathlib import Path
+
+    user_dir = Path(__file__).resolve().parent.parent / "data" / "user" / str(_user.id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    # 删除同 kind 的旧头像文件
+    for old in user_dir.glob(f"{kind}_avatar.*"):
+        old.unlink(missing_ok=True)
+
+    ext = Path(file_data.filename or "avatar.png").suffix or ".png"
+    filename = f"{kind}_avatar{ext}"
+    target = user_dir / filename
+
+    with target.open("wb") as out:
+        shutil.copyfileobj(file_data.file, out)
+
+    import time
+    avatar_url = f"/data/user/{_user.id}/{filename}?t={int(time.time())}"
+    return {"file_url": avatar_url}
+
+
 @router.post("/register", response_model=TokenResponse)
 async def register(body: RegisterRequest) -> TokenResponse:
     """
@@ -221,4 +268,43 @@ async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
         username=current_user.username,
         display_name=current_user.display_name or current_user.username,
         avatar=current_user.avatar or "",
+        ai_avatar=current_user.ai_avatar or "",
+        ai_name=current_user.ai_name or "NekroAgent",
+    )
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(
+    body: UpdateUserRequest,
+    current_user: User = Depends(get_current_user)
+) -> UserResponse:
+    """
+    更新当前登录用户信息。
+    """
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.id == current_user.id))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+            
+        if body.display_name is not None:
+            user.display_name = body.display_name.strip() or user.username
+        if body.avatar is not None:
+            user.avatar = body.avatar.strip()
+        if body.ai_avatar is not None:
+            user.ai_avatar = body.ai_avatar.strip()
+        if body.ai_name is not None:
+            user.ai_name = body.ai_name.strip() or "NekroAgent"
+            
+        await session.commit()
+        await session.refresh(user)
+        
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name or user.username,
+        avatar=user.avatar or "",
+        ai_avatar=user.ai_avatar or "",
+        ai_name=user.ai_name or "NekroAgent",
     )

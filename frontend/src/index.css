@@ -25,10 +25,18 @@
   padding: 0;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background: var(--bg-gradient);
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -47,14 +55,15 @@ textarea {
 .shell {
   display: grid;
   grid-template-columns: 320px 1fr;
-  width: min(1280px, calc(100vw - 40px));
-  height: min(850px, calc(100vh - 40px));
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   background: var(--shell-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
   overflow: hidden;
 }
 
@@ -127,38 +136,168 @@ textarea {
   background-color: #ef4444;
 }
 
-.new-chat {
+/* 新建对话的按钮动作集合容器 */
+.new-chat-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.new-chat-icon-btn {
+  flex: 1;
   background: var(--primary);
   color: white;
-  padding: 12px;
+  height: 48px;
   border-radius: var(--radius-md);
-  font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-bottom: 20px;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(224, 82, 82, 0.3);
+  transition: all 0.2s ease;
 }
 
-.new-chat:hover {
+.new-chat-icon-btn:hover {
   background: var(--primary-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 6px 16px rgba(224, 82, 82, 0.4);
 }
 
-.new-chat.secondary {
-  margin-top: -12px;
+.new-chat-icon-btn.secondary {
   background: white;
   color: var(--primary);
   border: 1px solid rgba(224, 82, 82, 0.22);
   box-shadow: none;
 }
 
-.new-chat.secondary:hover {
+.new-chat-icon-btn.secondary:hover {
   background: var(--primary-light);
   box-shadow: none;
+}
+
+.logout-button-icon {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.logout-button-icon:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.back-button-icon {
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  display: none; /* 仅在媒体查询小屏下展现 */
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.back-button-icon:hover {
+  background: white;
+  color: var(--primary);
+}
+
+.ghost-button-icon {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.ghost-button-icon:hover,
+.ghost-button-icon.active {
+  background: white;
+  color: var(--primary);
+  border-color: var(--border-color);
+}
+
+.upload-btn-icon {
+  background: var(--primary);
+  color: white;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.upload-btn-icon:hover {
+  background: var(--primary-hover);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.save-button-icon,
+.invite-button-icon {
+  flex: 1;
+  background: var(--primary);
+  color: white;
+  height: 42px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(224, 82, 82, 0.3);
+  transition: all 0.2s ease;
+}
+
+.save-button-icon:hover {
+  background: var(--primary-hover);
+}
+
+.invite-button-icon {
+  background: white;
+  color: var(--primary);
+  border: 1px solid rgba(224, 82, 82, 0.22);
+  box-shadow: none;
+}
+
+.invite-button-icon:hover {
+  background: var(--primary-light);
+}
+
+.send-button-icon {
+  background: var(--primary);
+  color: white;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(224, 82, 82, 0.3);
+}
+
+.send-button-icon:hover {
+  background: var(--primary-hover);
 }
 
 .chat-list {
@@ -239,6 +378,14 @@ textarea {
   position: relative;
 }
 
+.chat-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
 .toast {
   position: absolute;
   top: 16px;
@@ -274,16 +421,28 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.chat-header-main {
+  min-width: 0;
+  flex: 1;
 }
 
 .chat-header h1 {
   font-size: 1.25rem;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-header p {
   font-size: 0.85rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ghost-button {
@@ -303,24 +462,60 @@ textarea {
 
 /* Profile Panel */
 .profile-panel {
-  background: rgba(255, 255, 255, 0.95);
-  border-bottom: 1px solid var(--border-color);
-  padding: 20px 24px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 320px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(8px);
+  border-left: 1px solid var(--border-color);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  animation: slideDown 0.3s ease-out;
+  z-index: 30;
+  box-shadow: -5px 0 25px rgba(0, 0, 0, 0.05);
+  animation: slideInFromRight 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  overflow-y: auto;
 }
 
-@keyframes slideDown {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
+.profile-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
 
+.profile-panel-header h2 {
+  font-size: 1.15rem;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.close-panel-btn {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.close-panel-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+  }
   to {
-    transform: translateY(0);
-    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -397,12 +592,10 @@ textarea {
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -506,6 +699,7 @@ textarea {
   align-items: flex-end;
   gap: 12px;
   background: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
 }
 
 .icon-button {
@@ -584,7 +778,6 @@ textarea {
 
 .send-button:hover {
   background: var(--primary-hover);
-  transform: translateY(-1px);
 }
 
 .avatar-upload-group {
@@ -616,49 +809,88 @@ textarea {
 
 @media (max-width: 768px) {
   .shell {
-    grid-template-columns: 1fr;
+    display: block;
+    position: relative;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     border-radius: 0;
     border: none;
+    overflow: hidden;
   }
 
-  .shell.mobile-view-list .sidebar {
-    display: flex;
+  .sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100vw;
-    border-right: none;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 10;
+    background: white;
   }
+
+  .chat {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+    will-change: transform;
+    z-index: 20;
+    background: white;
+  }
+
+  /* 列表视图：聊天界面移出至右侧 */
   .shell.mobile-view-list .chat {
-    display: none;
+    transform: translateX(100%);
   }
 
-  .shell.mobile-view-chat .sidebar {
-    display: none;
-  }
+  /* 聊天视图：聊天界面滑入覆盖 */
   .shell.mobile-view-chat .chat {
-    display: flex;
-    width: 100vw;
+    transform: translateX(0);
   }
 
   .chat-header {
-    padding: 12px 16px;
+    position: relative;
+    z-index: 5;
+    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
     gap: 12px;
+    background: white; /* 必须有不透明背景来遮挡滚动区 */
   }
 
-  .chat-header .back-button {
+  .chat-header-main {
+    text-align: left;
+  }
+
+  .chat-header h1 {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .chat-header p {
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  .chat-header .back-button-icon {
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
     background: transparent;
     border: none;
     color: var(--primary);
-    font-size: 1rem;
-    font-weight: 500;
     cursor: pointer;
     padding: 6px 4px;
   }
 
-  .chat-header .back-button:hover {
+  .chat-header .back-button-icon:hover {
     color: var(--primary-hover);
   }
 
@@ -667,12 +899,16 @@ textarea {
   }
 
   .composer {
-    padding: 12px 16px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   .profile-panel {
-    grid-template-columns: 1fr;
-    padding: 16px;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-left: none;
+    padding: calc(20px + env(safe-area-inset-top, 0px)) 16px 20px;
+    background: white;
   }
 
   .bubble-row {
@@ -685,7 +921,7 @@ textarea {
 }
 
 @media (min-width: 769px) {
-  .chat-header .back-button {
+  .chat-header .back-button-icon {
     display: none;
   }
 }
@@ -1138,7 +1374,6 @@ textarea {
 
 .file-preview-btn:hover {
   background: var(--primary-light);
-  transform: translateY(-1px);
 }
 
 .file-attachment-card {
@@ -1161,7 +1396,6 @@ textarea {
 .file-attachment-card.clickable:hover {
   background: var(--primary-light);
   border-color: var(--primary);
-  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
@@ -1350,11 +1584,11 @@ textarea {
 @keyframes cardEnter {
   from {
     opacity: 0;
-    transform: translateY(30px) scale(0.96);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: scale(1);
   }
 }
 
@@ -1456,7 +1690,6 @@ textarea {
 
 .auth-submit:hover:not(:disabled) {
   background: var(--primary-hover);
-  transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(224, 82, 82, 0.4);
 }
 
@@ -1538,4 +1771,381 @@ textarea {
 .logout-button:hover {
   background: rgba(239, 68, 68, 0.08);
   color: #dc2626;
+}
+
+.empty-chat-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: 40px;
+  text-align: center;
+  background: var(--bg-light);
+}
+
+.empty-chat-content {
+  max-width: 400px;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.empty-chat-content h2 {
+  font-size: 1.5rem;
+  color: var(--text-main);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.empty-chat-content p {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* User Profile Top & Sidebar Brand */
+.user-profile-top {
+  justify-content: space-between !important;
+  padding: 12px !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+}
+
+.user-profile-top .profile-info {
+  flex: 1;
+  min-width: 0;
+  margin-left: 4px;
+}
+
+.user-profile-top .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1rem !important;
+}
+
+.user-profile-top .logout-button-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-profile-top .logout-button-icon:hover {
+  background: rgba(224, 82, 82, 0.1);
+  color: var(--primary);
+}
+
+.sidebar-brand-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.6;
+  width: 100%;
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* User Avatar Wrapper & Info Card */
+.user-avatar-wrapper {
+  position: relative;
+  cursor: pointer;
+}
+
+.user-info-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 220px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.user-avatar-wrapper:hover .user-info-card {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.user-info-card::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 20px;
+  border-width: 0 6px 6px 6px;
+  border-style: solid;
+  border-color: transparent transparent rgba(255, 255, 255, 0.95) transparent;
+}
+
+.user-info-card .card-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  letter-spacing: 0.5px;
+}
+
+.user-info-card .card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.user-info-card .card-row:last-child {
+  margin-bottom: 0;
+}
+
+.user-info-card .card-row .label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.user-info-card .card-row .value {
+  color: var(--text-main);
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 账号设置弹窗 */
+.user-settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.user-settings-modal {
+  width: 100%;
+  max-width: 450px;
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: modalIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.user-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
+}
+
+.user-settings-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.user-settings-header .close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.user-settings-header .close-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-main);
+}
+
+.user-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.user-settings-body .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.user-settings-body label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.user-settings-body input {
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  background: #fcfcfc;
+  transition: all 0.2s;
+}
+
+.user-settings-body input:focus {
+  border-color: var(--primary);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(224, 82, 82, 0.1);
+}
+
+.user-settings-body .readonly-input {
+  background: #f3f4f6;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.avatar-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.avatar-input-group input {
+  flex: 1;
+}
+
+.avatar-input-group .upload-icon-btn {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.avatar-input-group .upload-icon-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.user-settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+}
+
+.user-settings-footer button {
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.user-settings-footer .btn-cancel {
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: var(--text-main);
+}
+
+.user-settings-footer .btn-cancel:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.user-settings-footer .btn-save {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.user-settings-footer .btn-save:hover {
+  background: var(--primary-hover);
+}
+
+/* Avatar Upload Row */
+.avatar-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-avatar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #f3f4f6;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-avatar-btn:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
 }

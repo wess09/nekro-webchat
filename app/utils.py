@@ -53,12 +53,13 @@ def get_upload_path(filename: str, mime_type: str) -> tuple[Path, str]:
     return target_path, relative_url
 
 
-def message_payload(message: ChatMessage, conversation: Conversation | None = None) -> dict[str, Any]:
+def message_payload(message: ChatMessage, conversation: Conversation | None = None, sender_avatar: str = "") -> dict[str, Any]:
     """
     将数据库中的 `ChatMessage` 模型格式化为前端可以直接消费的 JSON 消息载体。
     
     :param message: 数据库消息实例
     :param conversation: 消息所属的会话实例
+    :param sender_avatar: 消息发送者的头像 URL
     """
     return {
         "type": "message",
@@ -69,6 +70,7 @@ def message_payload(message: ChatMessage, conversation: Conversation | None = No
         "channel_name": conversation.channel_name if conversation else "",
         "sender_id": message.sender_id,
         "sender_name": message.sender_name,
+        "sender_avatar": sender_avatar,
         "content": message.content,
         "file_url": message.file_url,
         "file_name": message.file_name,
@@ -95,6 +97,26 @@ def segment_text(segments: list[MessageSegmentUnion]) -> str:
         elif seg_type == "at":
             parts.append(f"@{getattr(segment, 'nickname', '') or getattr(segment, 'user_id', '')}")
     return "\n".join(part for part in parts if part).strip()
+
+
+async def resolve_sender_avatars(messages: list[ChatMessage]) -> dict[str, str]:
+    """
+    批量查询消息发送者的头像 URL。
+    返回 {sender_id: avatar_url} 的字典。
+    """
+    from sqlalchemy import select
+    from app.auth import User
+    from app.database import SessionLocal
+
+    sender_ids = list(set(m.sender_id for m in messages if m.sender_id and m.role == "user"))
+    if not sender_ids:
+        return {}
+    
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.id.in_(sender_ids)))
+        users = result.scalars().all()
+    
+    return {u.id: (u.avatar or "") for u in users}
 
 
 def cleanup_uploaded_files() -> None:

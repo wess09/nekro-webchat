@@ -6,6 +6,7 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   server: {
+    host: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8765',
@@ -16,6 +17,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/uploads': {
+        target: 'http://127.0.0.1:8765',
+        changeOrigin: true,
+      },
+      '/data': {
         target: 'http://127.0.0.1:8765',
         changeOrigin: true,
       },

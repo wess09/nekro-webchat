@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft } from 'lucide-react'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft, MessageSquarePlus, UsersRound, Settings, Save, UserPlus, Send, UploadCloud, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { authFetch, getToken, clearAuth } from './auth'
+import { authFetch, getToken, clearAuth, saveAuth } from './auth'
 
-export default function App({ currentUser, onLogout }) {
+export default function App({ currentUser: initialUser, onLogout }) {
+  const [currentUser, setUserState] = useState(initialUser)
   const [conversations, setConversations] = useState([])
   const [activeChannelId, setActiveChannelId] = useState('')
   const [mobileView, setMobileView] = useState('list')
@@ -16,6 +17,11 @@ export default function App({ currentUser, onLogout }) {
   const [input, setInput] = useState('')
   const [pendingFile, setPendingFile] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
+  const [showUserSettings, setShowUserSettings] = useState(false)
+  const [userProfileData, setUserProfileData] = useState({ display_name: '', avatar: '', ai_name: '', ai_avatar: '' })
+  const [groupMembers, setGroupMembers] = useState([])
+  const [isRemoving, setIsRemoving] = useState(false)
+  const [showAllMembersModal, setShowAllMembersModal] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false)
   const [previewImage, setPreviewImage] = useState(null)
   const [previewFile, setPreviewFile] = useState(null)
@@ -78,6 +84,24 @@ export default function App({ currentUser, onLogout }) {
   useEffect(() => {
     setHasMore(true)
   }, [activeChannelId])
+
+  useEffect(() => {
+    if (showProfile && activeChannelId && isGroupChat) {
+      fetchGroupMembers()
+    }
+  }, [showProfile, activeChannelId, isGroupChat])
+
+  const fetchGroupMembers = async () => {
+    try {
+      const res = await authFetch(`/api/conversations/${activeChannelId}/members`)
+      if (res.ok) {
+        const data = await res.json()
+        setGroupMembers(data)
+      }
+    } catch (err) {
+      console.error('拉取群成员失败:', err)
+    }
+  }
 
   useEffect(() => {
     const lastMsg = messages[messages.length - 1]
@@ -146,7 +170,7 @@ export default function App({ currentUser, onLogout }) {
       const items = data.items || []
       setConversations(items)
       if (items.length && !activeChannelIdRef.current) {
-        setActiveChannelId(items[0].channel_id)
+        // 留空，待用户点击
       }
     } catch (err) {
       console.error('获取对话列表失败:', err)
@@ -188,7 +212,6 @@ export default function App({ currentUser, onLogout }) {
     const apiURL = import.meta.env.VITE_API_URL || ''
     let wsUrl = ''
     const token = getToken()
-
     if (apiURL) {
       const parsedUrl = new URL(apiURL)
       const wsProtocol = parsedUrl.protocol === 'https:' ? 'wss' : 'ws'
@@ -207,7 +230,7 @@ export default function App({ currentUser, onLogout }) {
         ws.close()
         return
       }
-      setStatus({ text: '已连接', ok: true })
+      setStatus({ text: '在线', ok: true })
       if (activeChannelIdRef.current) {
         ws.send(JSON.stringify({ action: 'select', channel_id: activeChannelIdRef.current }))
       }
@@ -215,7 +238,7 @@ export default function App({ currentUser, onLogout }) {
 
     ws.onclose = () => {
       if (!isComponentMounted.current) return
-      setStatus({ text: '已断开，重连中', ok: false })
+      setStatus({ text: '离线', ok: false })
       setTimeout(() => {
         if (isComponentMounted.current) connectWebSocket()
       }, 1200)
@@ -236,20 +259,20 @@ export default function App({ currentUser, onLogout }) {
         }
         scheduleFetchConversations()
       } else if (payload.type === 'history') {
-        if (activeChannelIdRef.current && payload.channel_id && activeChannelIdRef.current !== payload.channel_id) {
+        if (!activeChannelIdRef.current || (payload.channel_id && activeChannelIdRef.current !== payload.channel_id)) {
           return
         }
-        if (payload.channel_id) setActiveChannelId(payload.channel_id)
         setMessages(payload.items || [])
         setIsWaiting(false)
       } else if (payload.type === 'conversations') {
         const items = payload.items || []
         setConversations(items)
+        // 不再默认自动选中第一个对话
         if (items.length && !activeChannelIdRef.current) {
-          setActiveChannelId(items[0].channel_id)
+          // 留空，等待用户手动点击
         }
       } else if (payload.type === 'status') {
-        setStatus({ text: payload.connected ? '已连接' : '连接中', ok: payload.connected })
+        setStatus({ text: payload.connected ? '在线' : '连接中', ok: payload.connected })
       } else if (payload.type === 'error') {
         showNotice(payload.message || '操作失败', 'error')
         setMessages(prev => [...prev, { role: 'system', content: payload.message }])
@@ -317,12 +340,112 @@ export default function App({ currentUser, onLogout }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '获取邀请链接失败')
       const inviteUrl = `${window.location.origin}/#${data.invite_path}`
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({
+            title: `加入群聊「${activeConv?.channel_name || 'WebChat'}」`,
+            text: `点击链接加入群聊「${activeConv?.channel_name || 'WebChat'}」`,
+            url: inviteUrl,
+          });
+          showNotice('分享菜单已拉起', 'success');
+          return;
+        } catch (shareErr) {
+          if (shareErr.name === 'AbortError') return;
+        }
+      }
       await navigator.clipboard.writeText(inviteUrl)
       showNotice('群聊邀请链接已复制', 'success')
     } catch (err) {
       showNotice(err.message || '复制群聊邀请链接失败', 'error')
     }
   }
+
+  const openUserSettings = () => {
+    setUserProfileData({
+      display_name: currentUser?.display_name || currentUser?.username || '',
+      avatar: currentUser?.avatar || '',
+      ai_name: currentUser?.ai_name || '',
+      ai_avatar: currentUser?.ai_avatar || ''
+    });
+    setShowUserSettings(true);
+  };
+
+  const uploadUserAvatar = async (kind) => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const formData = new FormData();
+        formData.append('file_data', file);
+        const res = await authFetch(`/api/auth/upload/avatar?kind=${kind}`, { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('上传头像失败');
+        const data = await res.json();
+        setUserProfileData(prev => ({ ...prev, [kind === 'user' ? 'avatar' : 'ai_avatar']: data.file_url }));
+        showNotice(`${kind === 'user' ? '用户' : 'AI'}头像上传成功`, 'success');
+      } catch (err) {
+        showNotice(err.message || '上传头像失败', 'error');
+      }
+    };
+    fileInput.click();
+  };
+
+  const saveUserSettings = async () => {
+    try {
+      const res = await authFetch('/api/auth/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userProfileData),
+      });
+      const updatedUser = await res.json();
+      if (!res.ok) throw new Error(updatedUser.detail || '保存个人信息失败');
+
+      showNotice('个人信息已保存', 'success');
+      setShowUserSettings(false);
+      saveAuth(getToken(), updatedUser);
+      setUserState(updatedUser);
+    } catch (err) {
+      showNotice(err.message || '保存个人信息失败', 'error');
+    }
+  };
+
+  const removeMember = async (uid) => {
+    try {
+      const res = await authFetch(`/api/conversations/${activeChannelId}/members/${uid}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '移出群成员失败');
+      
+      showNotice('已成功移出群成员', 'success');
+      setGroupMembers(prev => prev.filter(m => m.user_id !== uid));
+    } catch (err) {
+      showNotice(err.message || '移出群成员失败', 'error');
+    }
+  }
+
+  const deleteConversation = async (channelId, e) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm('确定要彻底删除该对话吗？删除后将清除全部聊天记录。')) return;
+    try {
+      const res = await authFetch(`/api/conversations/${channelId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || '删除对话失败');
+      }
+      showNotice('对话已删除', 'success');
+      setConversations(prev => prev.filter(item => item.channel_id !== channelId));
+      if (activeChannelId === channelId) {
+        setActiveChannelId('');
+      }
+    } catch (err) {
+      showNotice(err.message || '删除对话失败', 'error');
+    }
+  };
 
   const saveProfileSettings = async () => {
     if (!activeChannelId) return
@@ -340,6 +463,25 @@ export default function App({ currentUser, onLogout }) {
     }
   }
 
+  const exitGroupChat = async () => {
+    if (!activeChannelId) return;
+    if (!window.confirm('确定要退出该群聊吗？')) return;
+    try {
+      const res = await authFetch(`/api/conversations/${activeChannelId}/leave`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '退出群聊失败');
+      
+      showNotice('已成功退出群聊', 'success');
+      setConversations(prev => prev.filter(item => item.channel_id !== activeChannelId));
+      setActiveChannelId('');
+      setShowProfile(false);
+    } catch (err) {
+      showNotice(err.message || '退出群聊失败', 'error');
+    }
+  }
+
   const handleFileChange = (e) => {
     setPendingFile(e.target.files[0] || null)
   }
@@ -347,13 +489,16 @@ export default function App({ currentUser, onLogout }) {
   const uploadFile = async (file) => {
     const formData = new FormData()
     formData.append('file_data', file)
+    if (activeChannelId) {
+      formData.append('channel_id', activeChannelId)
+    }
     const res = await authFetch('/api/upload', { method: 'POST', body: formData })
     if (!res.ok) {
       let message = '上传失败'
       try {
         const data = await res.json()
         message = data.detail || message
-      } catch (err) {}
+      } catch (err) { }
       throw new Error(message)
     }
     return await res.json()
@@ -394,7 +539,7 @@ export default function App({ currentUser, onLogout }) {
         content,
         file: fileInfo,
       }))
-      
+
       setInput('')
       setPendingFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -471,23 +616,36 @@ export default function App({ currentUser, onLogout }) {
   return (
     <main className={`shell mobile-view-${mobileView}`}>
       <aside className="sidebar">
-        <div className="profile">
-          <div className="avatar">
-            <img src="/static/webchat.png" alt="Logo" />
+        <div className="profile user-profile-top">
+          <div className="user-avatar-wrapper" onClick={openUserSettings} title="点击修改个人信息">
+            <div className="avatar">
+              <img src={currentUser?.avatar || '/static/user.png'} alt="User Avatar" />
+            </div>
+            <div className="user-info-card">
+              <div className="card-header">个人资料</div>
+              <div className="card-row"><span className="label">UID</span> <span className="value">{currentUser?.id || '-'}</span></div>
+              <div className="card-row"><span className="label">账号</span> <span className="value">{currentUser?.username || '-'}</span></div>
+              <div className="card-row"><span className="label">昵称</span> <span className="value">{currentUser?.display_name || '-'}</span></div>
+            </div>
           </div>
           <div className="profile-info">
-            <div className="name">Nekro WebChat</div>
+            <div className="name">{currentUser?.display_name || currentUser?.username}</div>
             <div className={`status ${status.ok ? 'online' : 'offline'}`}>{status.text}</div>
           </div>
+          <button className="logout-button-icon top-logout" type="button" onClick={() => { clearAuth(); onLogout() }} title="退出登录">
+            <LogOut size={20} />
+          </button>
         </div>
-        
-        <button className="new-chat" type="button" onClick={createNewChat}>
-          <span className="plus-icon">＋</span> 新建对话
-        </button>
-        <button className="new-chat secondary" type="button" onClick={createGroupChat}>
-          <span className="plus-icon">＋</span> 创建群聊
-        </button>
-        
+
+        <div className="new-chat-actions">
+          <button className="new-chat-icon-btn" type="button" onClick={createNewChat} title="新建对话">
+            <MessageSquarePlus size={20} />
+          </button>
+          <button className="new-chat-icon-btn secondary" type="button" onClick={createGroupChat} title="创建群聊">
+            <UsersRound size={20} />
+          </button>
+        </div>
+
         <div className="chat-list">
           {conversations.map(item => (
             <button
@@ -507,13 +665,7 @@ export default function App({ currentUser, onLogout }) {
         </div>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user-info">
-            <span className="sidebar-username">{currentUser?.display_name || currentUser?.username}</span>
-          </div>
-          <button className="logout-button" type="button" onClick={() => { clearAuth(); onLogout() }}>
-            <LogOut size={16} />
-            <span>退出</span>
-          </button>
+          <div className="sidebar-brand-name">Nekro WebChat</div>
         </div>
       </aside>
 
@@ -523,225 +675,414 @@ export default function App({ currentUser, onLogout }) {
             {notice.message}
           </div>
         )}
-        <header className="chat-header">
-          <button className="back-button" onClick={() => setMobileView('list')} type="button">
-            <ArrowLeft size={20} />
-            <span>返回</span>
-          </button>
-          <div>
-            <h1>{activeConv?.channel_name || 'WebChat'}</h1>
-            <p>{activeConv ? `${activeConv.ai_name || 'NekroAgent'} · ${activeConv.channel_id}` : '-'}</p>
-          </div>
-          <button 
-            className={`ghost-button ${showProfile ? 'active' : ''}`} 
-            type="button" 
-            onClick={() => setShowProfile(!showProfile)}
-          >
-            {isGroupChat ? '群聊设置' : '对话设置'}
-          </button>
-        </header>
-
-        {showProfile && (
-          <section className="profile-panel">
-            <div className="form-group">
-              <label>{isGroupChat ? '群聊名称' : '对话名称'}</label>
-              <input 
-                value={profileData.channel_name} 
-                onChange={e => setProfileData(prev => ({ ...prev, channel_name: e.target.value }))} 
-              />
-            </div>
-            <div className="form-group">
-              <label>用户名</label>
-              <input 
-                value={profileData.user_name} 
-                onChange={e => setProfileData(prev => ({ ...prev, user_name: e.target.value }))} 
-              />
-            </div>
-            <div className="form-group">
-              <label>用户头像</label>
-              <div className="avatar-upload-group">
-                <input 
-                  type="text"
-                  placeholder="头像 URL"
-                  value={profileData.user_avatar} 
-                  onChange={e => setProfileData(prev => ({ ...prev, user_avatar: e.target.value }))} 
-                />
-                <button type="button" className="upload-btn" onClick={() => userAvatarRef.current.click()}>上传</button>
-                <input type="file" ref={userAvatarRef} hidden accept="image/*" onChange={(e) => handleAvatarUpload(e, 'user')} />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>AI 名字</label>
-              <input 
-                value={profileData.ai_name} 
-                onChange={e => setProfileData(prev => ({ ...prev, ai_name: e.target.value }))} 
-              />
-            </div>
-            <div className="form-group">
-              <label>AI 头像</label>
-              <div className="avatar-upload-group">
-                <input 
-                  type="text"
-                  placeholder="头像 URL"
-                  value={profileData.ai_avatar} 
-                  onChange={e => setProfileData(prev => ({ ...prev, ai_avatar: e.target.value }))} 
-                />
-                <button type="button" className="upload-btn" onClick={() => aiAvatarRef.current.click()}>上传</button>
-                <input type="file" ref={aiAvatarRef} hidden accept="image/*" onChange={(e) => handleAvatarUpload(e, 'ai')} />
-              </div>
-            </div>
-            <button className="save-button" type="button" onClick={saveProfileSettings}>
-              保存设置
-            </button>
-            {isGroupChat && (
-              <button className="invite-button" type="button" onClick={copyInviteLink}>
-                复制群聊邀请链接
+        {activeChannelId ? (
+          <div className="chat-content">
+            <header className="chat-header">
+              <button className="back-button-icon" onClick={() => setMobileView('list')} type="button" title="返回列表">
+                <ArrowLeft size={20} />
               </button>
-            )}
-          </section>
-        )}
+              <div className="chat-header-main">
+                <h1>{activeConv?.channel_name || 'WebChat'}</h1>
+                <p>{activeConv ? `${activeConv.ai_name || 'NekroAgent'} · ${activeConv.channel_id}` : '-'}</p>
+              </div>
+              <button
+                className={`ghost-button-icon ${showProfile ? 'active' : ''}`}
+                type="button"
+                onClick={() => setShowProfile(!showProfile)}
+                title={isGroupChat ? '群聊设置' : '对话设置'}
+              >
+                <Settings size={20} />
+              </button>
+            </header>
 
-        <div className="messages" onScroll={handleScroll}>
-          {messages.map((msg, index) => {
-            const isOwn = msg.role === 'user' && String(msg.sender_id) === String(currentUser?.id)
-            const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
-            const isSystem = msg.role === 'system'
-            const avatarUrl = isOwn
-              ? (currentUser?.avatar || activeConv?.user_avatar || '/static/user.png')
-              : (msg.role === 'user' ? '/static/user.png' : (activeConv?.ai_avatar || '/static/ai.png'))
-            const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') && 
-              (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
-            
-            return (
-              <div key={index} className={`bubble-row ${rowRole}`}>
-                {!isSystem && (
-                  <div className="msg-avatar">
-                    <img src={avatarUrl} alt={msg.sender_name} />
-                  </div>
-                )}
-                <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''}`}>
-                  {!isOwn && !isSystem && msg.role === 'user' && (
-                    <div className="sender-name">{msg.sender_name || '用户'}</div>
-                  )}
-                  {msg.content && (!msg.file_url || (
-                    msg.content.trim() !== `[文件] ${msg.file_name}` && 
-                    msg.content.trim() !== `[文件]${msg.file_name}` &&
-                    msg.content.trim() !== `[图片] ${msg.file_name}` && 
-                    msg.content.trim() !== `[图片]${msg.file_name}`
-                  )) && (
-                     <div className="markdown-body">
-                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                     </div>
-                  )}
-                  {msg.file_url && (
-                    <div className="message-attachment">
-                      {(msg.mime_type || '').startsWith('image/') ? (
-                        <img 
-                          className="bubble-image" 
-                          src={msg.file_url} 
-                          alt={msg.file_name || 'image'} 
-                          onClick={(e) => {
-                            if (!e.target.classList.contains('expired')) {
-                              setPreviewImage(msg.file_url)
-                            }
-                          }}
-                          onError={(e) => {
-                            e.target.onerror = null;
-                            e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 100'%3E%3Crect width='300' height='100' fill='%23f5f5f5'/%3E%3Ctext x='150' y='50' font-family='sans-serif' font-size='14' fill='%23999' text-anchor='middle' alignment-baseline='middle'%3E图片已过期或被清理%3C/text%3E%3C/svg%3E";
-                            e.target.classList.add('expired');
-                            e.target.style.cursor = 'default';
-                          }}
-                          style={{ cursor: 'zoom-in' }}
-                        />
-                      ) : (
-                        <div 
-                          className={`file-attachment-card ${isTextFile(msg.file_name) ? 'clickable' : ''}`}
-                          onClick={() => isTextFile(msg.file_name) && handlePreviewFile(msg.file_name, msg.file_url)}
-                        >
-                          <div className={`file-icon ${getFileClass(msg.file_name)}`}>{getFileIcon(msg.file_name)}</div>
-                          <div className="file-meta">
-                            <span className="file-name">{msg.file_name || '文件'}</span>
-                            <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
+            {showProfile && (
+              <section className="profile-panel">
+                <div className="profile-panel-header">
+                  <button className="close-panel-btn" onClick={() => setShowProfile(false)} title="返回对话" type="button">
+                    <ArrowLeft size={20} />
+                  </button>
+                  <h2>{isGroupChat ? '群聊设置' : '对话设置'}</h2>
+                  <div style={{ width: 32 }} />
+                </div>
+
+                {isGroupChat && (
+                  <div className="group-members-section" style={{ padding: '0 16px 16px' }}>
+                    <div className="members-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: '600', color: 'var(--text-main)' }}>群聊成员</h3>
+                      <span 
+                        style={{ fontSize: '0.85rem', color: 'var(--text-muted)', cursor: 'pointer' }}
+                        onClick={() => setShowAllMembersModal(true)}
+                      >
+                        查看{groupMembers.length}名群成员 &gt;
+                      </span>
+                    </div>
+                    <div className="members-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px 8px', marginBottom: '20px' }}>
+                      {groupMembers.slice(0, 13).map(m => (
+                        <div key={m.user_id} className="member-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', position: 'relative' }}>
+                          <div className="member-avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)', position: 'relative' }}>
+                            <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            {isRemoving && !m.is_owner && (
+                              <button 
+                                className="remove-member-badge" 
+                                type="button"
+                                onClick={() => removeMember(m.user_id)}
+                                style={{ position: 'absolute', top: '-2px', right: '-2px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
+                              >
+                                ×
+                              </button>
+                            )}
                           </div>
-
-                          <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const res = await fetch(msg.file_url, { method: 'HEAD' });
-                              if (!res.ok && res.status === 404) {
-                                e.preventDefault();
-                                alert('文件已过期或被系统自动清理');
-                              }
-                            } catch (err) {}
-                          }}>
-                             <Download size={18} />
-                          </a>
+                          <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', textAlign: 'center' }}>{m.display_name}</span>
+                        </div>
+                      ))}
+                      
+                      {/* 邀请 */}
+                      <div className="member-item func-item" onClick={copyInviteLink} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                        <div className="func-btn plus" style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f3f4f6', border: '1px dashed #d1d5db', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: '#9ca3af', paddingBottom: '4px' }}>
+                          +
+                        </div>
+                        <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>邀请</span>
+                      </div>
+                      
+                      {/* 移除 */}
+                      {activeConv?.user_id === currentUser?.id && (
+                        <div 
+                          className={`member-item func-item ${isRemoving ? 'active' : ''}`}
+                          onClick={() => setIsRemoving(!isRemoving)}
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          <div className="func-btn minus" style={{ width: '40px', height: '40px', borderRadius: '50%', background: isRemoving ? '#fee2e2' : '#f3f4f6', border: isRemoving ? '1px solid #fca5a5' : '1px dashed #d1d5db', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: isRemoving ? '#ef4444' : '#9ca3af', paddingBottom: '4px' }}>
+                            -
+                          </div>
+                          <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{isRemoving ? '取消' : '移出'}</span>
                         </div>
                       )}
                     </div>
-                  )}
+                  </div>
+                )}
+                {(!isGroupChat || activeConv?.user_id === currentUser?.id) ? (
+                  <div className="form-group" style={{ padding: '0 16px', marginBottom: '24px' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 'bold' }}>{isGroupChat ? '群聊名称' : '对话名称'}</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        style={{ flex: 1, padding: '8px 12px', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 'var(--radius-sm)', fontSize: '0.9rem' }}
+                        value={profileData.channel_name || ''}
+                        onChange={e => setProfileData(prev => ({ ...prev, channel_name: e.target.value }))}
+                      />
+                      <button 
+                        className="save-button-icon" 
+                        type="button" 
+                        onClick={saveProfileSettings} 
+                        title="保存名称"
+                        style={{ padding: '8px 12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Save size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="form-group" style={{ padding: '0 16px', marginBottom: '24px' }}>
+                    <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 'bold' }}>群聊名称</label>
+                    <div style={{ fontSize: '0.95rem', padding: '8px 12px', background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.05)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)' }}>
+                      {profileData.channel_name || activeConv?.channel_name}
+                    </div>
+                  </div>
+                )}
+
+                {isGroupChat ? (
+                  <div className="panel-actions" style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '16px' }}>
+                    <button 
+                      className="invite-button-icon" 
+                      type="button" 
+                      onClick={copyInviteLink} 
+                      title="复制群聊邀请链接"
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'var(--primary)', color: 'white', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer' }}
+                    >
+                      <UserPlus size={18} /> 邀请
+                    </button>
+                    {activeConv?.user_id === currentUser?.id ? (
+                      <button 
+                        className="exit-button-icon" 
+                        type="button" 
+                        onClick={(e) => deleteConversation(activeChannelId, e)} 
+                        title="解散群聊" 
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
+                      >
+                        <Trash2 size={18} /> 解散群聊
+                      </button>
+                    ) : (
+                      <button 
+                        className="exit-button-icon" 
+                        type="button" 
+                        onClick={exitGroupChat} 
+                        title="退出群聊" 
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
+                      >
+                        <LogOut size={18} /> 退出群聊
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="panel-actions" style={{ display: 'flex', justifyContent: 'center', padding: '16px' }}>
+                    <button 
+                      className="exit-button-icon" 
+                      type="button" 
+                      onClick={(e) => deleteConversation(activeChannelId, e)} 
+                      title="删除对话" 
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
+                    >
+                      <Trash2 size={18} /> 删除对话
+                    </button>
+                  </div>
+                )}
+              </section>
+            )}
+
+            <div className="messages" onScroll={handleScroll}>
+              {messages.map((msg, index) => {
+                const isOwn = msg.role === 'user' && String(msg.sender_id) === String(currentUser?.id)
+                const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
+                const isSystem = msg.role === 'system'
+                const avatarUrl = isOwn
+                  ? (currentUser?.avatar || '/static/user.png')
+                  : (msg.role === 'user'
+                    ? (msg.sender_avatar || '/static/user.png')
+                    : (activeConv?.ai_avatar || currentUser?.ai_avatar || '/static/ai.png'))
+                const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
+                  (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
+
+                return (
+                  <div key={index} className={`bubble-row ${rowRole}`}>
+                    {!isSystem && (
+                      <div className="msg-avatar">
+                        <img src={avatarUrl} alt={msg.sender_name} />
+                      </div>
+                    )}
+                    <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''}`}>
+                      {!isOwn && !isSystem && msg.role === 'user' && (
+                        <div className="sender-name">{msg.sender_name || '用户'}</div>
+                      )}
+                      {msg.content && (!msg.file_url || (
+                        msg.content.trim() !== `[文件] ${msg.file_name}` &&
+                        msg.content.trim() !== `[文件]${msg.file_name}` &&
+                        msg.content.trim() !== `[图片] ${msg.file_name}` &&
+                        msg.content.trim() !== `[图片]${msg.file_name}`
+                      )) && (
+                          <div className="markdown-body">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                          </div>
+                        )}
+                      {msg.file_url && (
+                        <div className="message-attachment">
+                          {(msg.mime_type || '').startsWith('image/') ? (
+                            <img
+                              className="bubble-image"
+                              src={msg.file_url}
+                              alt={msg.file_name || 'image'}
+                              onClick={(e) => {
+                                if (!e.target.classList.contains('expired')) {
+                                  setPreviewImage(msg.file_url)
+                                }
+                              }}
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 100'%3E%3Crect width='300' height='100' fill='%23f5f5f5'/%3E%3Ctext x='150' y='50' font-family='sans-serif' font-size='14' fill='%23999' text-anchor='middle' alignment-baseline='middle'%3E图片已过期或被清理%3C/text%3E%3C/svg%3E";
+                                e.target.classList.add('expired');
+                                e.target.style.cursor = 'default';
+                              }}
+                              style={{ cursor: 'zoom-in' }}
+                            />
+                          ) : (
+                            <div
+                              className={`file-attachment-card ${isTextFile(msg.file_name) ? 'clickable' : ''}`}
+                              onClick={() => isTextFile(msg.file_name) && handlePreviewFile(msg.file_name, msg.file_url)}
+                            >
+                              <div className={`file-icon ${getFileClass(msg.file_name)}`}>{getFileIcon(msg.file_name)}</div>
+                              <div className="file-meta">
+                                <span className="file-name">{msg.file_name || '文件'}</span>
+                                <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
+                              </div>
+
+                              <a className="file-download-btn" href={msg.file_url} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  const res = await fetch(msg.file_url, { method: 'HEAD' });
+                                  if (!res.ok && res.status === 404) {
+                                    e.preventDefault();
+                                    alert('文件已过期或被系统自动清理');
+                                  }
+                                } catch (err) { }
+                              }}>
+                                <Download size={18} />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {isWaiting && (
+                <div className="bubble-row assistant typing-indicator-row">
+                  <div className="msg-avatar">
+                    <img src={activeConv?.ai_avatar || currentUser?.ai_avatar || '/static/ai.png'} alt="AI" />
+                  </div>
+                  <div className="bubble typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form className="composer" onSubmit={handleSend}>
+              <button
+                type="button"
+                className="icon-button attach-button"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                ＋
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                hidden
+                onChange={handleFileChange}
+              />
+
+              <div className="compose-main">
+                {pendingFile && (
+                  <div className="attachment-preview">
+                    已选择：{pendingFile.name}
+                    <button type="button" className="clear-file" onClick={() => setPendingFile(null)}>×</button>
+                  </div>
+                )}
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSend(e)
+                    }
+                  }}
+                  placeholder="输入消息，Enter 发送"
+                  rows="1"
+                />
+              </div>
+
+              <button className="send-button-icon" type="submit" title="发送消息">
+                <Send size={20} />
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="empty-chat-state">
+            <div className="empty-chat-content">
+              <h2>欢迎来到 WebChat</h2>
+              <p>请在左侧选择一个现有对话，或创建一个新频道开始聊天吧！</p>
+            </div>
+          </div>
+        )}
+      </section>
+      {showUserSettings && createPortal(
+        <div className="user-settings-overlay" onClick={() => setShowUserSettings(false)}>
+          <div className="user-settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="user-settings-header">
+              <h3>账号设置</h3>
+              <button className="close-btn" onClick={() => setShowUserSettings(false)}><X size={20} /></button>
+            </div>
+            <div className="user-settings-body">
+              <div className="form-group">
+                <label>昵称</label>
+                <input
+                  type="text"
+                  value={userProfileData.display_name}
+                  onChange={e => setUserProfileData(prev => ({ ...prev, display_name: e.target.value }))}
+                  placeholder="输入新昵称"
+                />
+              </div>
+              <div className="form-group">
+                <label>用户头像</label>
+                <div className="avatar-upload-row">
+                  <div className="avatar-preview">
+                    <img src={userProfileData.avatar || '/static/user.png'} alt="用户头像" />
+                  </div>
+                  <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('user')}>
+                    <UploadCloud size={16} /> 上传头像
+                  </button>
                 </div>
               </div>
-            )
-          })}
-
-          {isWaiting && (
-            <div className="bubble-row assistant typing-indicator-row">
-              <div className="msg-avatar">
-                <img src={activeConv?.ai_avatar || '/static/ai.png'} alt="AI" />
+              <div className="form-group">
+                <label>AI 名字</label>
+                <input
+                  type="text"
+                  value={userProfileData.ai_name || ''}
+                  onChange={e => setUserProfileData(prev => ({ ...prev, ai_name: e.target.value }))}
+                  placeholder="输入AI的新名字"
+                />
               </div>
-              <div className="bubble typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
+              <div className="form-group">
+                <label>AI 头像</label>
+                <div className="avatar-upload-row">
+                  <div className="avatar-preview">
+                    <img src={userProfileData.ai_avatar || '/static/ai.png'} alt="AI头像" />
+                  </div>
+                  <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('ai')}>
+                    <UploadCloud size={16} /> 上传头像
+                  </button>
+                </div>
               </div>
             </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        <form className="composer" onSubmit={handleSend}>
-          <button 
-            type="button" 
-            className="icon-button attach-button" 
-            onClick={() => fileInputRef.current?.click()}
-          >
-            ＋
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            hidden 
-            onChange={handleFileChange} 
-          />
-          
-          <div className="compose-main">
-            {pendingFile && (
-              <div className="attachment-preview">
-                已选择：{pendingFile.name}
-                <button type="button" className="clear-file" onClick={() => setPendingFile(null)}>×</button>
-              </div>
-            )}
-            <textarea 
-              value={input} 
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSend(e)
-                }
-              }}
-              placeholder="输入消息，Enter 发送"
-              rows="1"
-            />
+            <div className="user-settings-footer">
+              <button className="btn-cancel" onClick={() => setShowUserSettings(false)}>取消</button>
+              <button className="btn-save" onClick={saveUserSettings}>保存修改</button>
+            </div>
           </div>
-          
-          <button className="send-button" type="submit">
-            发送
-          </button>
-        </form>
-      </section>
+        </div>,
+        document.body
+      )}
+      {showAllMembersModal && createPortal(
+        <div className="user-settings-overlay" onClick={() => setShowAllMembersModal(false)}>
+          <div className="user-settings-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="user-settings-header">
+              <h3>群聊成员 ({groupMembers.length})</h3>
+              <button className="close-btn" onClick={() => setShowAllMembersModal(false)}><X size={20} /></button>
+            </div>
+            <div className="user-settings-body" style={{ maxHeight: '400px', overflowY: 'auto', padding: '12px 0' }}>
+              {groupMembers.map(m => (
+                <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <div>
+                      <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{m.display_name}</span>
+                      {m.is_owner && <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#eff6ff', color: '#3b82f6' }}>群主</span>}
+                    </div>
+                  </div>
+                  {activeConv?.user_id === currentUser?.id && !m.is_owner && (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`确定要将 ${m.display_name} 移出群聊吗？`)) {
+                          removeMember(m.user_id)
+                        }
+                      }}
+                      style={{ fontSize: '0.8rem', padding: '4px 10px', borderRadius: 'var(--radius-sm)', background: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5', cursor: 'pointer' }}
+                    >
+                      移除
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {previewImage && createPortal(
         <div className="image-preview-overlay" onClick={() => setPreviewImage(null)}>
           <button className="close-preview" onClick={() => setPreviewImage(null)}><X size={24} /></button>
@@ -763,15 +1104,15 @@ export default function App({ currentUser, onLogout }) {
                 </div>
               )}
               {previewFile.type === 'html' && (
-                <iframe 
-                  srcDoc={previewFile.content} 
-                  title={previewFile.name} 
+                <iframe
+                  srcDoc={previewFile.content}
+                  title={previewFile.name}
                   style={{ width: '100%', height: '100%', minHeight: '500px', border: 'none', background: 'white' }}
                 />
               )}
               {previewFile.type === 'text' && (
-                <SyntaxHighlighter 
-                  language={previewFile.name.split('.').pop().toLowerCase()} 
+                <SyntaxHighlighter
+                  language={previewFile.name.split('.').pop().toLowerCase()}
                   style={atomDark}
                   customStyle={{ margin: 0, borderRadius: 'var(--radius-md)', padding: '16px' }}
                 >
