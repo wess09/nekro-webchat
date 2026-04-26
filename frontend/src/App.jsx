@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft, MessageSquarePlus, UsersRound, Settings, Save, UserPlus, Send, UploadCloud, Trash2 } from 'lucide-react'
+import { FileText, FileCode, FileSpreadsheet, Presentation, Archive, Download, X, Eye, LogOut, ArrowLeft, MessageSquarePlus, UsersRound, Settings, Save, UserPlus, Send, UploadCloud, Trash2, SmilePlus } from 'lucide-react'
 import 'katex/dist/katex.min.css'
 import ReactMarkdown from 'react-markdown'
 import mermaid from 'mermaid'
@@ -20,6 +20,28 @@ mermaid.initialize({
   securityLevel: 'loose',
   theme: 'neutral',
 })
+
+const STICKERS = [
+  { name: '大笑', src: '/static/大笑.webp' },
+  { name: '伤心', src: '/static/伤心.webp' },
+  { name: '喜欢', src: '/static/喜欢.webp' },
+  { name: '委屈', src: '/static/委屈.webp' },
+  { name: '害羞', src: '/static/害羞.webp' },
+  { name: '思考', src: '/static/思考.webp' },
+  { name: '恐惧', src: '/static/恐惧.webp' },
+  { name: '振奋', src: '/static/振奋.webp' },
+  { name: '无聊', src: '/static/无聊.webp' },
+  { name: '疑惑', src: '/static/疑惑.webp' },
+  { name: '自信', src: '/static/自信.webp' },
+  { name: '认可', src: '/static/认可.webp' },
+  { name: '震惊', src: '/static/震惊.webp' },
+  { name: '生气', src: '/static/生气.webp' },
+  { name: '惊喜', src: '/static/惊喜.webp' },
+]
+
+function getStickerContent(name) {
+  return `[表情包] ${name}`
+}
 
 const markdownSchema = {
   ...defaultSchema,
@@ -206,6 +228,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
   const [groupMembers, setGroupMembers] = useState([])
   const [isRemoving, setIsRemoving] = useState(false)
   const [showAllMembersModal, setShowAllMembersModal] = useState(false)
+  const [showStickerPicker, setShowStickerPicker] = useState(false)
   const [isWaiting, setIsWaiting] = useState(false)
   const [previewImage, setPreviewImage] = useState(null)
   const [previewFile, setPreviewFile] = useState(null)
@@ -596,7 +619,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || '移出群成员失败');
-      
+
       showNotice('已成功移出群成员', 'success');
       setGroupMembers(prev => prev.filter(m => m.user_id !== uid));
     } catch (err) {
@@ -650,7 +673,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || '退出群聊失败');
-      
+
       showNotice('已成功退出群聊', 'success');
       setConversations(prev => prev.filter(item => item.channel_id !== activeChannelId));
       setActiveChannelId('');
@@ -695,6 +718,31 @@ export default function App({ currentUser: initialUser, onLogout }) {
     } catch (err) {
       showNotice(err.message || '上传头像失败', 'error')
       console.error('上传头像失败:', err)
+    }
+  }
+
+  const sendSticker = async (sticker) => {
+    if (socketRef.current?.readyState !== WebSocket.OPEN || !activeChannelId) return
+    try {
+      const content = getStickerContent(sticker.name)
+      const shouldWaitForAi = isAiMentioned(content)
+      setIsWaiting(shouldWaitForAi)
+      const response = await fetch(sticker.src)
+      if (!response.ok) throw new Error('表情包资源加载失败')
+      const blob = await response.blob()
+      const extension = sticker.src.split('.').pop()?.split('?')[0] || 'webp'
+      const file = new File([blob], `${sticker.name}.${extension}`, { type: blob.type || 'image/webp' })
+      const fileInfo = await uploadFile(file)
+      socketRef.current.send(JSON.stringify({
+        action: 'send',
+        channel_id: activeChannelId,
+        content,
+        file: fileInfo,
+      }))
+      setShowStickerPicker(false)
+    } catch (err) {
+      setIsWaiting(false)
+      showNotice(err.message || '发送表情包失败', 'error')
     }
   }
 
@@ -887,7 +935,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                   <div className="group-members-section" style={{ padding: '0 16px 16px' }}>
                     <div className="members-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                       <h3 style={{ fontSize: '0.95rem', fontWeight: '600', color: 'var(--text-main)' }}>群聊成员</h3>
-                      <span 
+                      <span
                         style={{ fontSize: '0.85rem', color: 'var(--text-muted)', cursor: 'pointer' }}
                         onClick={() => setShowAllMembersModal(true)}
                       >
@@ -900,8 +948,8 @@ export default function App({ currentUser: initialUser, onLogout }) {
                           <div className="member-avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)', position: 'relative' }}>
                             <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             {isRemoving && !m.is_owner && (
-                              <button 
-                                className="remove-member-badge" 
+                              <button
+                                className="remove-member-badge"
                                 type="button"
                                 onClick={() => removeMember(m.user_id)}
                                 style={{ position: 'absolute', top: '-2px', right: '-2px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
@@ -913,7 +961,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                           <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', textAlign: 'center' }}>{m.display_name}</span>
                         </div>
                       ))}
-                      
+
                       {/* 邀请 */}
                       <div className="member-item func-item" onClick={copyInviteLink} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                         <div className="func-btn plus" style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f3f4f6', border: '1px dashed #d1d5db', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: '#9ca3af', paddingBottom: '4px' }}>
@@ -921,10 +969,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         </div>
                         <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>邀请</span>
                       </div>
-                      
+
                       {/* 移除 */}
                       {activeConv?.user_id === currentUser?.id && (
-                        <div 
+                        <div
                           className={`member-item func-item ${isRemoving ? 'active' : ''}`}
                           onClick={() => setIsRemoving(!isRemoving)}
                           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
@@ -947,10 +995,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         value={profileData.channel_name || ''}
                         onChange={e => setProfileData(prev => ({ ...prev, channel_name: e.target.value }))}
                       />
-                      <button 
-                        className="save-button-icon" 
-                        type="button" 
-                        onClick={saveProfileSettings} 
+                      <button
+                        className="save-button-icon"
+                        type="button"
+                        onClick={saveProfileSettings}
                         title="保存名称"
                         style={{ padding: '8px 12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
@@ -969,31 +1017,31 @@ export default function App({ currentUser: initialUser, onLogout }) {
 
                 {isGroupChat ? (
                   <div className="panel-actions" style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '16px' }}>
-                    <button 
-                      className="invite-button-icon" 
-                      type="button" 
-                      onClick={copyInviteLink} 
+                    <button
+                      className="invite-button-icon"
+                      type="button"
+                      onClick={copyInviteLink}
                       title="复制群聊邀请链接"
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'var(--primary)', color: 'white', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer' }}
                     >
                       <UserPlus size={18} /> 邀请
                     </button>
                     {activeConv?.user_id === currentUser?.id ? (
-                      <button 
-                        className="exit-button-icon" 
-                        type="button" 
-                        onClick={(e) => deleteConversation(activeChannelId, e)} 
-                        title="解散群聊" 
+                      <button
+                        className="exit-button-icon"
+                        type="button"
+                        onClick={(e) => deleteConversation(activeChannelId, e)}
+                        title="解散群聊"
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
                       >
                         <Trash2 size={18} /> 解散群聊
                       </button>
                     ) : (
-                      <button 
-                        className="exit-button-icon" 
-                        type="button" 
-                        onClick={exitGroupChat} 
-                        title="退出群聊" 
+                      <button
+                        className="exit-button-icon"
+                        type="button"
+                        onClick={exitGroupChat}
+                        title="退出群聊"
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
                       >
                         <LogOut size={18} /> 退出群聊
@@ -1002,11 +1050,11 @@ export default function App({ currentUser: initialUser, onLogout }) {
                   </div>
                 ) : (
                   <div className="panel-actions" style={{ display: 'flex', justifyContent: 'center', padding: '16px' }}>
-                    <button 
-                      className="exit-button-icon" 
-                      type="button" 
-                      onClick={(e) => deleteConversation(activeChannelId, e)} 
-                      title="删除对话" 
+                    <button
+                      className="exit-button-icon"
+                      type="button"
+                      onClick={(e) => deleteConversation(activeChannelId, e)}
+                      title="删除对话"
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
                     >
                       <Trash2 size={18} /> 删除对话
@@ -1026,8 +1074,15 @@ export default function App({ currentUser: initialUser, onLogout }) {
                   : (msg.role === 'user'
                     ? (msg.sender_avatar || '/static/user.png')
                     : (activeConv?.ai_avatar || currentUser?.ai_avatar || '/static/ai.png'))
+                const isStickerMessage = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
+                  (msg.content || '').trim().startsWith('[表情包]')
                 const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
-                  (!msg.content || msg.content.trim() === `[图片] ${msg.file_name}` || msg.content.trim() === `[图片]${msg.file_name}`)
+                  (
+                    !msg.content ||
+                    msg.content.trim() === `[图片] ${msg.file_name}` ||
+                    msg.content.trim() === `[图片]${msg.file_name}` ||
+                    isStickerMessage
+                  )
 
                 return (
                   <div key={index} className={`bubble-row ${rowRole}`}>
@@ -1036,7 +1091,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         <img src={avatarUrl} alt={msg.sender_name} />
                       </div>
                     )}
-                    <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''}`}>
+                    <div className={`bubble ${isImageOnly ? 'bubble-image-only' : ''} ${isStickerMessage ? 'bubble-sticker-only' : ''}`}>
                       {!isOwn && !isSystem && msg.role === 'user' && (
                         <div className="sender-name">{msg.sender_name || '用户'}</div>
                       )}
@@ -1044,7 +1099,8 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         msg.content.trim() !== `[文件] ${msg.file_name}` &&
                         msg.content.trim() !== `[文件]${msg.file_name}` &&
                         msg.content.trim() !== `[图片] ${msg.file_name}` &&
-                        msg.content.trim() !== `[图片]${msg.file_name}`
+                        msg.content.trim() !== `[图片]${msg.file_name}` &&
+                        !isStickerMessage
                       )) && (
                           <div className="markdown-body">
                             <MarkdownRenderer content={msg.content} />
@@ -1053,7 +1109,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                       {msg.file_url && (
                         <div className="message-attachment">
                           {(msg.mime_type || '').startsWith('image/') ? (
-                              <img
+                            <img
                               className="bubble-image"
                               src={withApiBase(msg.file_url)}
                               alt={msg.file_name || 'image'}
@@ -1119,19 +1175,46 @@ export default function App({ currentUser: initialUser, onLogout }) {
             </div>
 
             <form className="composer" onSubmit={handleSend}>
-              <button
-                type="button"
-                className="icon-button attach-button"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                ＋
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                hidden
-                onChange={handleFileChange}
-              />
+              <div className="composer-actions">
+                <button
+                  type="button"
+                  className="icon-button attach-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="上传文件"
+                >
+                  ＋
+                </button>
+                <button
+                  type="button"
+                  className={`icon-button sticker-button ${showStickerPicker ? 'active' : ''}`}
+                  onClick={() => setShowStickerPicker(prev => !prev)}
+                  title="发送表情包"
+                >
+                  <SmilePlus size={20} />
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  hidden
+                  onChange={handleFileChange}
+                />
+                {showStickerPicker && (
+                  <div className="sticker-picker">
+                    {STICKERS.map(sticker => (
+                      <button
+                        key={sticker.name}
+                        type="button"
+                        className="sticker-item"
+                        onClick={() => sendSticker(sticker)}
+                        title={sticker.name}
+                      >
+                        <img src={sticker.src} alt={sticker.name} />
+                        <span>{sticker.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="compose-main">
                 {pendingFile && (
@@ -1243,7 +1326,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                     </div>
                   </div>
                   {activeConv?.user_id === currentUser?.id && !m.is_owner && (
-                    <button 
+                    <button
                       onClick={() => {
                         if (window.confirm(`确定要将 ${m.display_name} 移出群聊吗？`)) {
                           removeMember(m.user_id)

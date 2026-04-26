@@ -63,7 +63,12 @@ async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any
     if last_msg:
         if last_msg.file_url:
             if (last_msg.mime_type or "").startswith("image/"):
-                d["last_message"] = f"[图片] {last_msg.file_name}"
+                content = (last_msg.content or "").strip()
+                if content.startswith("[表情包]"):
+                    sticker_name = content.removeprefix("[表情包]").strip() or Path(last_msg.file_name or "").stem or "表情"
+                    d["last_message"] = f"[动画表情] {sticker_name}"
+                else:
+                    d["last_message"] = f"[图片] {last_msg.file_name}"
             else:
                 d["last_message"] = f"[文件] {last_msg.file_name}"
         else:
