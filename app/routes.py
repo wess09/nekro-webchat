@@ -62,7 +62,11 @@ async def pack_single_conversation(session, conv: Conversation) -> dict[str, Any
     # 格式化最后一条消息的展示文本
     if last_msg:
         if last_msg.file_url:
-            if (last_msg.mime_type or "").startswith("image/"):
+            suffix = Path(last_msg.file_name or last_msg.file_url or "").suffix.lower()
+            is_image = (last_msg.mime_type or "").startswith("image/") or suffix in {
+                ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".avif"
+            }
+            if is_image:
                 content = (last_msg.content or "").strip()
                 if content.startswith("[表情包]"):
                     sticker_name = content.removeprefix("[表情包]").strip() or Path(last_msg.file_name or "").stem or "表情"

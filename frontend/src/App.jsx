@@ -26,6 +26,12 @@ function getStickerContent(name) {
   return `[表情包] ${name}`
 }
 
+function getStickerNameFromContent(content = '') {
+  const text = String(content).trim()
+  if (!text.startsWith('[表情包]')) return ''
+  return text.replace(/^\[表情包\]\s*/, '').trim()
+}
+
 function resolveBackendAssetUrl(url) {
   if (!url) return url
   if (/^(https?:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
@@ -35,6 +41,24 @@ function resolveBackendAssetUrl(url) {
     return withApiBase(url)
   }
   return url
+}
+
+function getFileExtension(fileName = '', fileUrl = '') {
+  const source = fileName || fileUrl
+  const cleanSource = String(source).split('?')[0]
+  const parts = cleanSource.split('.')
+  return parts.length > 1 ? parts.pop().toLowerCase() : ''
+}
+
+function isImageAttachment(msg) {
+  const mimeType = String(msg?.mime_type || '')
+  if (mimeType.startsWith('image/')) return true
+  const ext = getFileExtension(msg?.file_name, msg?.file_url)
+  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext)
+}
+
+function getStickerByName(name) {
+  return stickers.find((sticker) => sticker.name === name) || null
 }
 
 const markdownSchema = {
@@ -721,17 +745,11 @@ export default function App({ currentUser: initialUser, onLogout }) {
       const content = getStickerContent(sticker.name)
       const shouldWaitForAi = isAiMentioned(content)
       setIsWaiting(shouldWaitForAi)
-      const response = await fetch(sticker.src)
-      if (!response.ok) throw new Error('表情包资源加载失败')
-      const blob = await response.blob()
-      const extension = sticker.src.split('.').pop()?.split('?')[0] || 'webp'
-      const file = new File([blob], `${sticker.name}.${extension}`, { type: blob.type || 'image/webp' })
-      const fileInfo = await uploadFile(file)
       socketRef.current.send(JSON.stringify({
         action: 'send',
         channel_id: activeChannelId,
         content,
-        file: fileInfo,
+        file: null,
       }))
       setShowStickerPicker(false)
     } catch (err) {
@@ -1063,14 +1081,15 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 const isOwn = msg.role === 'user' && String(msg.sender_id) === String(currentUser?.id)
                 const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
                 const isSystem = msg.role === 'system'
+                const stickerName = getStickerNameFromContent(msg.content)
+                const sticker = stickerName ? getStickerByName(stickerName) : null
                 const avatarUrl = isOwn
                   ? (resolveBackendAssetUrl(currentUser?.avatar) || userAvatar)
                   : (msg.role === 'user'
                     ? (resolveBackendAssetUrl(msg.sender_avatar) || userAvatar)
                     : (resolveBackendAssetUrl(activeConv?.ai_avatar) || resolveBackendAssetUrl(currentUser?.ai_avatar) || aiAvatar))
-                const isStickerMessage = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
-                  (msg.content || '').trim().startsWith('[表情包]')
-                const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
+                const isStickerMessage = Boolean(sticker)
+                const isImageOnly = msg.file_url && isImageAttachment(msg) &&
                   (
                     !msg.content ||
                     msg.content.trim() === `[图片] ${msg.file_name}` ||
@@ -1100,9 +1119,20 @@ export default function App({ currentUser: initialUser, onLogout }) {
                             <MarkdownRenderer content={msg.content} />
                           </div>
                         )}
+                      {isStickerMessage && (
+                        <div className="message-attachment">
+                          <img
+                            className="bubble-image"
+                            src={sticker.src}
+                            alt={sticker.name}
+                            style={{ cursor: 'zoom-in' }}
+                            onClick={() => setPreviewImage(sticker.src)}
+                          />
+                        </div>
+                      )}
                       {msg.file_url && (
                         <div className="message-attachment">
-                          {(msg.mime_type || '').startsWith('image/') ? (
+                          {isImageAttachment(msg) ? (
                             <img
                               className="bubble-image"
                               src={withApiBase(msg.file_url)}
