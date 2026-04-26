@@ -895,7 +895,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                                 <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                               </div>
 
-                              <a className="file-download-btn" href={`/api/download?path=${encodeURIComponent(msg.file_url)}&name=${encodeURIComponent(msg.file_name)}`} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
+                              <a className="file-download-btn" href={`/api/download?path=${encodeURIComponent(msg.file_url)}&name=${encodeURIComponent(msg.file_name)}&token=${encodeURIComponent(getToken())}`} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
                                   const res = await fetch(msg.file_url, { method: 'HEAD' });
