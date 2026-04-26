@@ -430,7 +430,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || '移出群成员失败');
-      
+
       showNotice('已成功移出群成员', 'success');
       setGroupMembers(prev => prev.filter(m => m.user_id !== uid));
     } catch (err) {
@@ -484,7 +484,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || '退出群聊失败');
-      
+
       showNotice('已成功退出群聊', 'success');
       setConversations(prev => prev.filter(item => item.channel_id !== activeChannelId));
       setActiveChannelId('');
@@ -721,7 +721,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                   <div className="group-members-section" style={{ padding: '0 16px 16px' }}>
                     <div className="members-section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                       <h3 style={{ fontSize: '0.95rem', fontWeight: '600', color: 'var(--text-main)' }}>群聊成员</h3>
-                      <span 
+                      <span
                         style={{ fontSize: '0.85rem', color: 'var(--text-muted)', cursor: 'pointer' }}
                         onClick={() => setShowAllMembersModal(true)}
                       >
@@ -734,8 +734,8 @@ export default function App({ currentUser: initialUser, onLogout }) {
                           <div className="member-avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)', position: 'relative' }}>
                             <img src={getFullUrl(m.avatar) || '/static/user.png'} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             {isRemoving && !m.is_owner && (
-                              <button 
-                                className="remove-member-badge" 
+                              <button
+                                className="remove-member-badge"
                                 type="button"
                                 onClick={() => removeMember(m.user_id)}
                                 style={{ position: 'absolute', top: '-2px', right: '-2px', width: '16px', height: '16px', borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}
@@ -747,7 +747,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                           <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', textAlign: 'center' }}>{m.display_name}</span>
                         </div>
                       ))}
-                      
+
                       {/* 邀请 */}
                       <div className="member-item func-item" onClick={copyInviteLink} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                         <div className="func-btn plus" style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#f3f4f6', border: '1px dashed #d1d5db', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', color: '#9ca3af', paddingBottom: '4px' }}>
@@ -755,10 +755,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         </div>
                         <span className="member-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>邀请</span>
                       </div>
-                      
+
                       {/* 移除 */}
                       {activeConv?.user_id === currentUser?.id && (
-                        <div 
+                        <div
                           className={`member-item func-item ${isRemoving ? 'active' : ''}`}
                           onClick={() => setIsRemoving(!isRemoving)}
                           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
@@ -781,10 +781,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                         value={profileData.channel_name || ''}
                         onChange={e => setProfileData(prev => ({ ...prev, channel_name: e.target.value }))}
                       />
-                      <button 
-                        className="save-button-icon" 
-                        type="button" 
-                        onClick={saveProfileSettings} 
+                      <button
+                        className="save-button-icon"
+                        type="button"
+                        onClick={saveProfileSettings}
                         title="保存名称"
                         style={{ padding: '8px 12px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
@@ -803,31 +803,31 @@ export default function App({ currentUser: initialUser, onLogout }) {
 
                 {isGroupChat ? (
                   <div className="panel-actions" style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '16px' }}>
-                    <button 
-                      className="invite-button-icon" 
-                      type="button" 
-                      onClick={copyInviteLink} 
+                    <button
+                      className="invite-button-icon"
+                      type="button"
+                      onClick={copyInviteLink}
                       title="复制群聊邀请链接"
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'var(--primary)', color: 'white', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer' }}
                     >
                       <UserPlus size={18} /> 邀请
                     </button>
                     {activeConv?.user_id === currentUser?.id ? (
-                      <button 
-                        className="exit-button-icon" 
-                        type="button" 
-                        onClick={(e) => deleteConversation(activeChannelId, e)} 
-                        title="解散群聊" 
+                      <button
+                        className="exit-button-icon"
+                        type="button"
+                        onClick={(e) => deleteConversation(activeChannelId, e)}
+                        title="解散群聊"
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
                       >
                         <Trash2 size={18} /> 解散群聊
                       </button>
                     ) : (
-                      <button 
-                        className="exit-button-icon" 
-                        type="button" 
-                        onClick={exitGroupChat} 
-                        title="退出群聊" 
+                      <button
+                        className="exit-button-icon"
+                        type="button"
+                        onClick={exitGroupChat}
+                        title="退出群聊"
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
                       >
                         <LogOut size={18} /> 退出群聊
@@ -836,11 +836,11 @@ export default function App({ currentUser: initialUser, onLogout }) {
                   </div>
                 ) : (
                   <div className="panel-actions" style={{ display: 'flex', justifyContent: 'center', padding: '16px' }}>
-                    <button 
-                      className="exit-button-icon" 
-                      type="button" 
-                      onClick={(e) => deleteConversation(activeChannelId, e)} 
-                      title="删除对话" 
+                    <button
+                      className="exit-button-icon"
+                      type="button"
+                      onClick={(e) => deleteConversation(activeChannelId, e)}
+                      title="删除对话"
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 24px', background: '#fee2e2', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #fca5a5', cursor: 'pointer' }}
                     >
                       <Trash2 size={18} /> 删除对话
@@ -915,7 +915,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                                 <span className="file-size">{getFileSubtitle(msg.file_name, msg.mime_type)}</span>
                               </div>
 
-                              <a className="file-download-btn" href={getFullUrl(msg.file_url)} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
+                              <a className="file-download-btn" href={`/api/download?path=${encodeURIComponent(msg.file_url)}&name=${encodeURIComponent(msg.file_name)}`} download={msg.file_name} target="_blank" rel="noreferrer" onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
                                   const res = await fetch(getFullUrl(msg.file_url), { method: 'HEAD' });
@@ -1077,7 +1077,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                     </div>
                   </div>
                   {activeConv?.user_id === currentUser?.id && !m.is_owner && (
-                    <button 
+                    <button
                       onClick={() => {
                         if (window.confirm(`确定要将 ${m.display_name} 移出群聊吗？`)) {
                           removeMember(m.user_id)
