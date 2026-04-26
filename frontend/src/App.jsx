@@ -13,6 +13,7 @@ import remarkDeflist from 'remark-deflist'
 import remarkMath from 'remark-math'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { aiAvatar, stickers, userAvatar } from './assets'
 import { authFetch, getToken, getWsBaseUrl, clearAuth, saveAuth, withApiBase } from './auth'
 
 mermaid.initialize({
@@ -20,24 +21,6 @@ mermaid.initialize({
   securityLevel: 'loose',
   theme: 'neutral',
 })
-
-const STICKERS = [
-  { name: '大笑', src: '/static/大笑.webp' },
-  { name: '伤心', src: '/static/伤心.webp' },
-  { name: '喜欢', src: '/static/喜欢.webp' },
-  { name: '委屈', src: '/static/委屈.webp' },
-  { name: '害羞', src: '/static/害羞.webp' },
-  { name: '思考', src: '/static/思考.webp' },
-  { name: '恐惧', src: '/static/恐惧.webp' },
-  { name: '振奋', src: '/static/振奋.webp' },
-  { name: '无聊', src: '/static/无聊.webp' },
-  { name: '疑惑', src: '/static/疑惑.webp' },
-  { name: '自信', src: '/static/自信.webp' },
-  { name: '认可', src: '/static/认可.webp' },
-  { name: '震惊', src: '/static/震惊.webp' },
-  { name: '生气', src: '/static/生气.webp' },
-  { name: '惊喜', src: '/static/惊喜.webp' },
-]
 
 function getStickerContent(name) {
   return `[表情包] ${name}`
@@ -845,7 +828,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
         <div className="profile user-profile-top">
           <div className="user-avatar-wrapper" onClick={openUserSettings} title="点击修改个人信息">
             <div className="avatar">
-              <img src={currentUser?.avatar || '/static/user.png'} alt="User Avatar" />
+              <img src={currentUser?.avatar || userAvatar} alt="User Avatar" />
             </div>
             <div className="user-info-card">
               <div className="card-header">个人资料</div>
@@ -880,7 +863,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               onClick={() => selectConversation(item.channel_id)}
             >
               <div className="chat-avatar">
-                <img src={item.ai_avatar || '/static/ai.png'} alt={item.ai_name} />
+                <img src={item.ai_avatar || aiAvatar} alt={item.ai_name} />
               </div>
               <div className="chat-meta">
                 <span className="chat-title">{item.channel_name}</span>
@@ -946,7 +929,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                       {groupMembers.slice(0, 13).map(m => (
                         <div key={m.user_id} className="member-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', position: 'relative' }}>
                           <div className="member-avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.06)', position: 'relative' }}>
-                            <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={m.avatar || userAvatar} alt={m.display_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             {isRemoving && !m.is_owner && (
                               <button
                                 className="remove-member-badge"
@@ -1070,10 +1053,10 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 const rowRole = isOwn ? 'user' : (msg.role === 'user' ? 'other-user' : msg.role)
                 const isSystem = msg.role === 'system'
                 const avatarUrl = isOwn
-                  ? (currentUser?.avatar || '/static/user.png')
+                  ? (currentUser?.avatar || userAvatar)
                   : (msg.role === 'user'
-                    ? (msg.sender_avatar || '/static/user.png')
-                    : (activeConv?.ai_avatar || currentUser?.ai_avatar || '/static/ai.png'))
+                    ? (msg.sender_avatar || userAvatar)
+                    : (activeConv?.ai_avatar || currentUser?.ai_avatar || aiAvatar))
                 const isStickerMessage = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
                   (msg.content || '').trim().startsWith('[表情包]')
                 const isImageOnly = msg.file_url && (msg.mime_type || '').startsWith('image/') &&
@@ -1161,7 +1144,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               {isWaiting && (
                 <div className="bubble-row assistant typing-indicator-row">
                   <div className="msg-avatar">
-                    <img src={activeConv?.ai_avatar || currentUser?.ai_avatar || '/static/ai.png'} alt="AI" />
+                    <img src={activeConv?.ai_avatar || currentUser?.ai_avatar || aiAvatar} alt="AI" />
                   </div>
                   <div className="bubble typing-indicator">
                     <span></span>
@@ -1200,7 +1183,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 />
                 {showStickerPicker && (
                   <div className="sticker-picker">
-                    {STICKERS.map(sticker => (
+                    {stickers.map(sticker => (
                       <button
                         key={sticker.name}
                         type="button"
@@ -1272,7 +1255,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 <label>用户头像</label>
                 <div className="avatar-upload-row">
                   <div className="avatar-preview">
-                    <img src={userProfileData.avatar || '/static/user.png'} alt="用户头像" />
+                    <img src={userProfileData.avatar || userAvatar} alt="用户头像" />
                   </div>
                   <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('user')}>
                     <UploadCloud size={16} /> 上传头像
@@ -1292,7 +1275,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
                 <label>AI 头像</label>
                 <div className="avatar-upload-row">
                   <div className="avatar-preview">
-                    <img src={userProfileData.ai_avatar || '/static/ai.png'} alt="AI头像" />
+                    <img src={userProfileData.ai_avatar || aiAvatar} alt="AI头像" />
                   </div>
                   <button type="button" className="upload-avatar-btn" onClick={() => uploadUserAvatar('ai')}>
                     <UploadCloud size={16} /> 上传头像
@@ -1319,7 +1302,7 @@ export default function App({ currentUser: initialUser, onLogout }) {
               {groupMembers.map(m => (
                 <div key={m.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <img src={m.avatar || '/static/user.png'} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <img src={m.avatar || userAvatar} alt={m.display_name} style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
                       <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{m.display_name}</span>
                       {m.is_owner && <span style={{ marginLeft: '6px', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#eff6ff', color: '#3b82f6' }}>群主</span>}

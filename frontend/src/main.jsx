@@ -2,8 +2,16 @@ import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import LoginPage from './LoginPage.jsx'
+import { webchatLogo } from './assets.js'
 import { verifyToken, getSavedUser } from './auth.js'
 import './index.css'
+
+const favicon =
+  document.querySelector("link[rel='icon']") ||
+  document.head.appendChild(Object.assign(document.createElement('link'), { rel: 'icon' }))
+
+favicon.type = 'image/png'
+favicon.href = webchatLogo
 
 function Root() {
   // null = 加载中, false = 未登录, object = 已登录用户

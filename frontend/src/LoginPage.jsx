@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { webchatLogo } from './assets'
 import { login, register } from './auth'
 
 /**
@@ -47,7 +48,7 @@ export default function LoginPage({ onLoginSuccess }) {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-logo">
-          <img src="/static/webchat.png" alt="Logo" />
+          <img src={webchatLogo} alt="Logo" />
         </div>
         <h1 className="auth-title">Nekro WebChat</h1>
         <p className="auth-subtitle">
