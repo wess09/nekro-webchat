@@ -1121,13 +1121,12 @@ export default function App({ currentUser: initialUser, onLogout }) {
                       {!isOwn && !isSystem && msg.role === 'user' && (
                         <div className="sender-name">{msg.sender_name || '用户'}</div>
                       )}
-                      {msg.content && (!msg.file_url || (
+                      {msg.content && !isStickerMessage && (!msg.file_url || (
                         msg.content.trim() !== `[文件] ${msg.file_name}` &&
                         msg.content.trim() !== `[文件]${msg.file_name}` &&
                         msg.content.trim() !== `[图片] ${msg.file_name}` &&
-                        msg.content.trim() !== `[图片]${msg.file_name}` &&
-                        !isStickerMessage
-                      )) && (
+                        msg.content.trim() !== `[图片]${msg.file_name}`
+                        )) && (
                           <div className="markdown-body">
                             <MarkdownRenderer content={msg.content} />
                           </div>
