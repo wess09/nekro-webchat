@@ -20,14 +20,15 @@ FRONTEND_STATIC = BASE_DIR / "frontend" / "static"
 
 app = FastAPI(title="Nekro WebChat")
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.*",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.mount(
     "/static",
     StaticFiles(directory=FRONTEND_STATIC if FRONTEND_STATIC.exists() else STATIC_DIR),
